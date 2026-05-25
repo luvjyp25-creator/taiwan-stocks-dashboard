@@ -1267,27 +1267,38 @@ function applyCache(cache, schedule, pad) {
   setTimeout(() => toast(`💾 ${statusNote}`), 400);
 }
 
-/* ══ 資料取得失敗（無快取）→ 顯示空白提示，不顯示模擬資料 ══ */
-function showNoDataState(errMsg) {
-  entryAllData = []; exitAllData = [];
-  applyFilters('entry'); applyFilters('exit');
-  document.getElementById('entryCnt').textContent = '— 檔';
-  document.getElementById('exitCnt').textContent  = '— 檔';
-  document.getElementById('nc-entry').textContent = '0';
-  document.getElementById('nc-exit').textContent  = '0';
-  document.getElementById('entrySub').textContent = '無法取得資料';
-  document.getElementById('exitSub').textContent  = '無法取得資料';
-  document.getElementById('entryModeDesc').textContent = '⚠️ 資料取得失敗';
-  document.getElementById('exitModeDesc').textContent  = '⚠️ 資料取得失敗';
-  const hint = `TWSE 連線失敗：${errMsg}｜請檢查網路後按「🔄 重掃」重試`;
-  document.getElementById('entryScopeText').textContent = hint;
-  document.getElementById('exitScopeText').textContent  = hint;
-  document.getElementById('entryScopeIcon').textContent = '⚠️';
-  setSourceBadge('mock');
-  setTimeout(() => toast('⚠️ ' + hint), 400);
+/* ══ 套用 FinMind 50 檔結果到 UI ══ */
+function applyFinMindResult(report) {
+  entryAllData = report.entry.length > 0 ? report.entry : [];
+  exitAllData  = report.exit.length  > 0 ? report.exit  : [];
+  applyFilters('entry');
+  applyFilters('exit');
+  const eg = entryAllData.filter(s=>s.sig==='green').length;
+  const ey = entryAllData.filter(s=>s.sig==='yellow').length;
+  const er = exitAllData.filter(s=>s.action?.cls==='urgent').length;
+  const eo = exitAllData.filter(s=>s.action?.cls==='exit').length;
+  document.getElementById('entryCnt').textContent = entryAllData.length + ' 檔';
+  document.getElementById('exitCnt').textContent  = exitAllData.length  + ' 檔';
+  document.getElementById('nc-entry').textContent = eg + ey;
+  document.getElementById('nc-exit').textContent  = er + eo;
+  document.getElementById('entrySub').textContent = `🟢 ${eg} 可進場 ｜ 🟡 ${ey} 觀察中`;
+  document.getElementById('exitSub').textContent  = `🚨 ${er} 立即出場 ｜ ⛔ ${eo} 建議出場`;
+  document.getElementById('entryModeDesc').textContent = '精選50檔深度分析（TWSE 暫不可用）';
+  document.getElementById('exitModeDesc').textContent  = '精選50檔深度分析（TWSE 暫不可用）';
+  const scope = '資料來源：FinMind 深度分析｜分析範疇：精選 50 檔上市股（TWSE 全市場掃描暫不可用）';
+  document.getElementById('entryScopeText').textContent = scope;
+  document.getElementById('exitScopeText').textContent  = scope;
+  document.getElementById('entryScopeIcon').textContent = '🔬';
+  if (report.index) {
+    const idx = report.index;
+    document.getElementById('idxVal').textContent = idx.value.toLocaleString('zh-TW', {maximumFractionDigits:2});
+    document.getElementById('idxVal').className   = 'stat-val ' + (idx.chgAmt >= 0 ? 'tw-up' : 'tw-down');
+    document.getElementById('idxSub').textContent = (idx.chgAmt>=0?'▲':'▼')+' '+Math.abs(idx.chgAmt).toFixed(2)+' ('+idx.chgPct.toFixed(2)+'%)';
+    document.getElementById('idxSub').className   = 'stat-sub ' + (idx.chgAmt >= 0 ? 'tw-up' : 'tw-down');
+  }
 }
 
-/* ══ Main load ══ */
+/* ══ Main load：TWSE → FinMind → 快取（永不顯示模擬）══ */
 async function loadPage() {
   const pad = n => String(n).padStart(2,'0');
   const now = new Date();
@@ -1298,32 +1309,65 @@ async function loadPage() {
 
   const schedule = getMarketSchedule();
   document.getElementById('mktStatus').textContent = schedule.inSession ? '盤中' : '收盤';
-
   const cache = loadMarketCache();
 
-  // ── 永遠先嘗試 TWSE API（任何時間都有前一交易日資料）──
-  document.getElementById('ldMsg').textContent = '📡 正在取得市場資料…';
-  document.getElementById('ldBar').style.width = '15%';
+  // ── Level 1：TWSE 全市場掃描 ──
+  document.getElementById('ldMsg').textContent = '📡 TWSE 全市場掃描…';
+  document.getElementById('ldBar').style.width = '10%';
   try {
     const result = await scanAllMarket((msg, pct) => {
       document.getElementById('ldMsg').textContent = msg;
-      document.getElementById('ldBar').style.width = (15 + pct * 0.75) + '%';
+      document.getElementById('ldBar').style.width = (10 + pct * 0.75) + '%';
     });
     applyFullMarketResult(result);
     setSourceBadge('twse');
     saveMarketCache(result);
-    // 非收盤時間，補充說明顯示的是前一交易日資料
     if (!schedule.afterClose || schedule.isWeekend) {
       const when = schedule.isWeekend ? '週末' : schedule.inSession ? '盤中' : '盤前';
-      const note = `（${when}，顯示前一交易日收盤資料）`;
-      document.getElementById('entryScopeText').textContent += note;
-      document.getElementById('exitScopeText').textContent  += note;
+      document.getElementById('entryScopeText').textContent += `（${when}，前一交易日收盤資料）`;
+      document.getElementById('exitScopeText').textContent  += `（${when}，前一交易日收盤資料）`;
     }
-  } catch(e) {
-    console.warn('TWSE API 失敗，改用快取:', e.message);
-    if (cache) applyCache(cache, schedule, pad);
-    else       showNoDataState(e.message);
+    document.getElementById('loadingOverlay').classList.add('hidden');
+    updateWatchCount(); initHistory();
+    return;
+  } catch(e1) {
+    console.warn('TWSE 失敗:', e1.message);
   }
+
+  // ── Level 2：FinMind 精選50檔 ──
+  document.getElementById('ldMsg').textContent = '🔬 TWSE 不可用，改用 FinMind…';
+  document.getElementById('ldBar').style.width = '50%';
+  try {
+    const report = await DataService.loadStocks(() => {});
+    applyFinMindResult(report);
+    setSourceBadge(report.source);
+    document.getElementById('loadingOverlay').classList.add('hidden');
+    updateWatchCount(); initHistory();
+    return;
+  } catch(e2) {
+    console.warn('FinMind 失敗:', e2.message);
+  }
+
+  // ── Level 3：快取（上次成功資料）──
+  document.getElementById('ldBar').style.width = '85%';
+  if (cache) {
+    document.getElementById('ldMsg').textContent = '💾 載入快取資料…';
+    applyCache(cache, schedule, pad);
+    document.getElementById('loadingOverlay').classList.add('hidden');
+    updateWatchCount(); initHistory();
+    return;
+  }
+
+  // ── 全部失敗（極少情況）──
+  document.getElementById('ldMsg').textContent = '⚠️ 資料取得失敗';
+  entryAllData = []; exitAllData = [];
+  applyFilters('entry'); applyFilters('exit');
+  ['entryCnt','exitCnt'].forEach(id => document.getElementById(id).textContent = '— 檔');
+  ['entrySub','exitSub'].forEach(id => document.getElementById(id).textContent = '無法取得資料');
+  ['entryModeDesc','exitModeDesc'].forEach(id => document.getElementById(id).textContent = '⚠️ 所有資料來源均失敗');
+  ['entryScopeText','exitScopeText'].forEach(id => document.getElementById(id).textContent = '請確認網路連線後按「🔄 重掃」重試');
+  document.getElementById('entryScopeIcon').textContent = '⚠️';
+  setTimeout(() => toast('⚠️ TWSE 與 FinMind 均無法連線，請稍後重試'), 400);
 
   document.getElementById('loadingOverlay').classList.add('hidden');
   updateWatchCount();
