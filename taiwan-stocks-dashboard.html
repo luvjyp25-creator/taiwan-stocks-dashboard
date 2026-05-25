@@ -1215,73 +1215,136 @@ function loadMarketCache() {
   } catch { return null; }
 }
 
+/* ══ 台灣時間 & 市場狀態 ══ */
+function getTaiwanNow() {
+  // 台灣 UTC+8，無論使用者在哪個時區都正確
+  const utcMs = Date.now() + new Date().getTimezoneOffset() * 60000;
+  return new Date(utcMs + 8 * 3600000);
+}
+
+function getMarketSchedule() {
+  const tw   = getTaiwanNow();
+  const pad  = n => String(n).padStart(2,'0');
+  const day  = tw.getDay();            // 0=週日, 6=週六
+  const h    = tw.getHours();
+  const m    = tw.getMinutes();
+  const mins = h * 60 + m;            // 今天過了幾分鐘
+  const isWeekend   = day === 0 || day === 6;
+  const afterClose  = mins >= 13 * 60 + 30;  // 13:30 後
+  const inSession   = !isWeekend && mins >= 9 * 60 && !afterClose; // 09:00–13:30
+
+  // 下次可取得新資料的時間說明
+  let nextUpdate;
+  if (isWeekend)       nextUpdate = '下週一 13:30 後';
+  else if (afterClose) nextUpdate = null;             // 現在就是更新時間
+  else                 nextUpdate = '今日 13:30 後';
+
+  const dateStr = `${tw.getFullYear()}/${pad(tw.getMonth()+1)}/${pad(tw.getDate())}`;
+  return { isWeekend, afterClose, inSession, nextUpdate, dateStr, tw };
+}
+
+/* ══ 套用快取資料到 UI ══ */
+function applyCache(cache, schedule, pad) {
+  const savedAt = new Date(cache.savedAt);
+  const cacheDate = `${savedAt.getFullYear()}/${pad(savedAt.getMonth()+1)}/${pad(savedAt.getDate())}`;
+  const cacheTime = `${pad(savedAt.getHours())}:${pad(savedAt.getMinutes())}`;
+
+  let statusNote;
+  if (schedule.isWeekend)
+    statusNote = `週末 — 顯示上個交易日（${cacheDate}）資料｜${schedule.nextUpdate}更新`;
+  else if (schedule.inSession)
+    statusNote = `盤中 — 顯示昨日收盤資料（${cacheDate}）｜${schedule.nextUpdate}更新`;
+  else
+    statusNote = `顯示 ${cacheDate} ${cacheTime} 快取資料｜${schedule.nextUpdate ? schedule.nextUpdate+'更新' : 'TWSE 今日資料取得失敗，使用快取'}`;
+
+  applyFullMarketResult(cache);
+  setSourceBadge('twse');
+  document.getElementById('entryScopeText').textContent = `💾 ${statusNote}`;
+  document.getElementById('exitScopeText').textContent  = `💾 ${statusNote}`;
+  document.getElementById('entryScopeIcon').textContent = '💾';
+  document.getElementById('entryModeDesc').textContent  = `全市場 ${cache.total} 檔（快取 ${cacheDate}）`;
+  document.getElementById('exitModeDesc').textContent   = `全市場 ${cache.total} 檔（快取 ${cacheDate}）`;
+  setTimeout(() => toast(`💾 ${statusNote}`), 400);
+}
+
+/* ══ 套用模擬資料到 UI ══ */
+function applyMockData(schedule) {
+  setSourceBadge('mock');
+  entryAllData = MOCK_ENTRY; exitAllData = MOCK_EXIT;
+  applyFilters('entry'); applyFilters('exit');
+  const meg = MOCK_ENTRY.filter(s=>s.sig==='green').length, mey = MOCK_ENTRY.filter(s=>s.sig==='yellow').length;
+  const mer = MOCK_EXIT.filter(s=>s.action?.cls==='urgent').length, meo = MOCK_EXIT.filter(s=>s.action?.cls==='exit').length;
+  document.getElementById('entryCnt').textContent = (meg+mey) + ' 檔';
+  document.getElementById('exitCnt').textContent  = (mer+meo) + ' 檔';
+  document.getElementById('entrySub').textContent = `🟢 ${meg} 可進場 ｜ 🟡 ${mey} 觀察中`;
+  document.getElementById('exitSub').textContent  = `🚨 ${mer} 立即出場 ｜ ⛔ ${meo} 建議出場`;
+  document.getElementById('nc-entry').textContent = meg+mey;
+  document.getElementById('nc-exit').textContent  = mer+meo;
+  document.getElementById('entryModeDesc').textContent = '⚠️ 模擬資料（尚無快取）';
+  document.getElementById('exitModeDesc').textContent  = '⚠️ 模擬資料（尚無快取）';
+  const hint = schedule.nextUpdate
+    ? `首次使用，尚無快取。請於${schedule.nextUpdate}開啟網頁，系統將自動下載並快取真實資料`
+    : '尚無快取，TWSE 資料取得失敗。請稍後再試';
+  document.getElementById('entryScopeText').textContent = `⚠️ ${hint}`;
+  document.getElementById('exitScopeText').textContent  = `⚠️ ${hint}`;
+  document.getElementById('entryScopeIcon').textContent = '⚠️';
+  setTimeout(() => toast(`⚠️ ${hint}`), 500);
+}
+
 /* ══ Main load ══ */
 async function loadPage() {
   const pad = n => String(n).padStart(2,'0');
   const now = new Date();
   const ts  = `${now.getFullYear()}/${pad(now.getMonth()+1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-  const ds  = ts.split(' ')[0];
   document.getElementById('updateTime').textContent = `更新：${ts}`;
-  document.getElementById('entryDate').textContent  = ds + ' 更新';
-  document.getElementById('exitDate').textContent   = ds + ' 更新';
-  const h = now.getHours(), m = now.getMinutes();
-  // TWSE 交易時間 09:00–13:30（台灣時間 UTC+8）
-  document.getElementById('mktStatus').textContent =
-    (h > 9 || (h===9&&m>=0)) && (h < 13 || (h===13&&m<=30)) ? '盤中' : '收盤';
+  document.getElementById('entryDate').textContent  = ts.split(' ')[0] + ' 更新';
+  document.getElementById('exitDate').textContent   = ts.split(' ')[0] + ' 更新';
 
-  try {
-    // 嘗試取得 TWSE 即時全市場資料
+  const schedule = getMarketSchedule();
+  // 用台灣時間判斷盤中/收盤
+  document.getElementById('mktStatus').textContent = schedule.inSession ? '盤中' : '收盤';
+
+  const cache = loadMarketCache();
+
+  if (schedule.afterClose && !schedule.isWeekend) {
+    // ── 情境A：交易日 13:30 後 → 優先抓即時資料 ──
     document.getElementById('ldMsg').textContent = '📡 正在掃描全市場…';
     document.getElementById('ldBar').style.width = '15%';
-    const result = await scanAllMarket((msg, pct) => {
-      document.getElementById('ldMsg').textContent = msg;
-      document.getElementById('ldBar').style.width = (15 + pct * 0.75) + '%';
-    });
-    applyFullMarketResult(result);
-    setSourceBadge('twse');
-    saveMarketCache(result);  // 成功後寫入快取
-  } catch(e) {
-    console.warn('TWSE 全市場掃描失敗:', e.message);
-    // 嘗試使用上次快取（上一個交易日資料）
-    const cache = loadMarketCache();
-    if (cache) {
-      const savedAt  = new Date(cache.savedAt);
-      const dateStr  = `${savedAt.getFullYear()}/${pad(savedAt.getMonth()+1)}/${pad(savedAt.getDate())}`;
-      const timeStr  = `${pad(savedAt.getHours())}:${pad(savedAt.getMinutes())}`;
-      applyFullMarketResult(cache);
+    try {
+      const result = await scanAllMarket((msg, pct) => {
+        document.getElementById('ldMsg').textContent = msg;
+        document.getElementById('ldBar').style.width = (15 + pct * 0.75) + '%';
+      });
+      applyFullMarketResult(result);
       setSourceBadge('twse');
-      // 覆寫範疇說明，標示為快取資料
-      const cacheNote = `使用快取資料（${dateStr} ${timeStr} 掃描）｜TWSE 每交易日 13:30 後更新｜${e.message}`;
-      document.getElementById('entryScopeText').textContent = cacheNote;
-      document.getElementById('exitScopeText').textContent  = cacheNote;
-      document.getElementById('entryScopeIcon').textContent = '💾';
-      document.getElementById('entryModeDesc').textContent  =
-        `全市場 ${cache.total} 檔掃描（快取 ${dateStr}）`;
-      document.getElementById('exitModeDesc').textContent   =
-        `全市場 ${cache.total} 檔掃描（快取 ${dateStr}）`;
-      setTimeout(() => toast(`💾 顯示 ${dateStr} 快取資料 — TWSE 更新於每交易日 13:30`), 400);
+      saveMarketCache(result);
+    } catch(e) {
+      console.warn('即時掃描失敗，改用快取:', e.message);
+      if (cache) applyCache(cache, schedule, pad);
+      else       applyMockData(schedule);
+    }
+  } else {
+    // ── 情境B：盤中 / 盤前 / 週末 → 直接用快取，不呼叫 API ──
+    if (cache) {
+      document.getElementById('ldMsg').textContent = '💾 載入快取資料…';
+      document.getElementById('ldBar').style.width = '80%';
+      applyCache(cache, schedule, pad);
     } else {
-      // 無快取 → 最後防線：模擬資料
-      setSourceBadge('mock');
-      entryAllData = MOCK_ENTRY;
-      exitAllData  = MOCK_EXIT;
-      applyFilters('entry');
-      applyFilters('exit');
-      const meg = MOCK_ENTRY.filter(s=>s.sig==='green').length, mey = MOCK_ENTRY.filter(s=>s.sig==='yellow').length;
-      const mer = MOCK_EXIT.filter(s=>s.action?.cls==='urgent').length, meo = MOCK_EXIT.filter(s=>s.action?.cls==='exit').length;
-      document.getElementById('entryCnt').textContent = (meg + mey) + ' 檔';
-      document.getElementById('exitCnt').textContent  = (mer + meo) + ' 檔';
-      document.getElementById('entrySub').textContent = `🟢 ${meg} 可進場 ｜ 🟡 ${mey} 觀察中`;
-      document.getElementById('exitSub').textContent  = `🚨 ${mer} 立即出場 ｜ ⛔ ${meo} 建議出場`;
-      document.getElementById('nc-entry').textContent = meg + mey;
-      document.getElementById('nc-exit').textContent  = mer + meo;
-      document.getElementById('entryModeDesc').textContent = '⚠️ 模擬資料（尚無快取）';
-      document.getElementById('exitModeDesc').textContent  = '⚠️ 模擬資料（尚無快取）';
-      const hint = `⚠️ ${e.message}｜首次使用請於交易日 13:30 後開啟，資料將自動快取供日後離線使用`;
-      document.getElementById('entryScopeText').textContent = hint;
-      document.getElementById('exitScopeText').textContent  = hint;
-      document.getElementById('entryScopeIcon').textContent = '⚠️';
-      setTimeout(() => toast('⚠️ 尚無快取資料，顯示模擬資料。請於交易日 13:30 後重試一次。'), 500);
+      // 無快取 → 仍嘗試 API（可能有前一日資料）
+      document.getElementById('ldMsg').textContent = '📡 無快取，嘗試連線…';
+      document.getElementById('ldBar').style.width = '15%';
+      try {
+        const result = await scanAllMarket((msg, pct) => {
+          document.getElementById('ldMsg').textContent = msg;
+          document.getElementById('ldBar').style.width = (15 + pct * 0.75) + '%';
+        });
+        applyFullMarketResult(result);
+        setSourceBadge('twse');
+        saveMarketCache(result);
+      } catch(e) {
+        console.warn('API 失敗且無快取:', e.message);
+        applyMockData(schedule);
+      }
     }
   }
 
