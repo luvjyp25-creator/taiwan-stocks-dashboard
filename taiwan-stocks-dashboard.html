@@ -1,0 +1,1745 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>台股雷達 — 選股 Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang TC', 'Microsoft JhengHei', 'Segoe UI', sans-serif;
+      background: #F0F2F5; color: #111827; min-height: 100vh;
+    }
+
+    /* ══ Header ══ */
+    header {
+      position: sticky; top: 0; z-index: 100; background: #fff;
+      border-bottom: 1px solid #E5E7EB; height: 60px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 28px; box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-mark {
+      width: 34px; height: 34px; border-radius: 9px;
+      background: linear-gradient(135deg,#1B4FD8,#3B82F6);
+      display: flex; align-items: center; justify-content: center;
+      color:#fff; font-weight:800; font-size:14px;
+    }
+    .logo-name { font-size:17px; font-weight:700; color:#111827; }
+    .logo-name span { color:#1B4FD8; }
+    .header-right { display:flex; align-items:center; gap:12px; }
+    .update-time { font-size:12px; color:#9CA3AF; }
+    .source-badge {
+      display:inline-flex; align-items:center; gap:5px;
+      font-size:11px; font-weight:600; padding:3px 10px;
+      border-radius:999px; text-decoration:none;
+    }
+    .source-badge.finmind { background:#F0FDF4; color:#15803D; border:1px solid #BBF7D0; }
+    .source-badge.twse    { background:#EFF6FF; color:#1B4FD8; border:1px solid #BFDBFE; }
+    .source-badge.mock    { background:#FFFBEB; color:#92400E; border:1px solid #FDE68A; }
+    .settings-btn {
+      display:flex; align-items:center; gap:5px; font-size:12px; font-weight:600;
+      color:#6B7280; text-decoration:none; padding:5px 10px; border-radius:8px;
+      transition:background .15s;
+    }
+    .settings-btn:hover { background:#F3F4F6; color:#111827; }
+    .market-pill {
+      display:flex; align-items:center; gap:6px; background:#F0FDF4;
+      border:1px solid #BBF7D0; border-radius:999px; padding:3px 12px;
+      font-size:12px; font-weight:600; color:#15803D;
+    }
+    .pulse-dot { width:6px; height:6px; border-radius:50%; background:#22C55E; animation:blink 2s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* ══ Loading ══ */
+    #loadingOverlay {
+      position:fixed; inset:0; z-index:200; background:rgba(240,242,245,.94);
+      display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    }
+    #loadingOverlay.hidden { display:none; }
+    .spinner { width:38px; height:38px; border:3px solid #E5E7EB; border-top-color:#1B4FD8; border-radius:50%; animation:spin .7s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .ld-title { font-size:15px; font-weight:700; }
+    .ld-msg   { font-size:13px; color:#6B7280; min-height:18px; }
+    .ld-bar-wrap { width:220px; height:4px; background:#E5E7EB; border-radius:2px; overflow:hidden; }
+    .ld-bar { height:100%; background:#1B4FD8; border-radius:2px; transition:width .35s ease; width:0; }
+
+    /* ══ Layout ══ */
+    .wrap { max-width:1380px; margin:0 auto; padding:24px 20px 52px; }
+
+    /* ══ Stats ══ */
+    .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px; }
+    .stat { background:#fff; border:1px solid #E5E7EB; border-radius:12px; padding:16px 20px; }
+    .stat-label { font-size:12px; color:#6B7280; margin-bottom:5px; }
+    .stat-val   { font-size:22px; font-weight:800; }
+    .stat-sub   { font-size:12px; color:#9CA3AF; margin-top:3px; }
+    .tw-up   { color:#DC2626; }
+    .tw-down { color:#16A34A; }
+    .entry-col { color:#15803D; }
+    .exit-col  { color:#BE123C; }
+
+    /* ══ Section nav tabs ══ */
+    .section-nav { display:flex; gap:4px; margin-bottom:0; }
+    .snav-btn {
+      display:flex; align-items:center; gap:7px; padding:10px 20px;
+      border-radius:10px 10px 0 0; font-size:14px; font-weight:700;
+      cursor:pointer; border:1px solid transparent; border-bottom:none;
+      background:#E5E7EB; color:#6B7280; transition:all .15s; font-family:inherit;
+    }
+    .snav-btn.active { background:#fff; color:#111827; border-color:#E5E7EB; position:relative; }
+    .snav-btn.active::after { content:''; position:absolute; bottom:-1px; left:0; right:0; height:2px; background:#fff; }
+    .snav-btn:hover:not(.active) { background:#D1D5DB; color:#374151; }
+    .snav-count {
+      font-size:11px; font-weight:700; padding:1px 7px; border-radius:999px; min-width:22px; text-align:center;
+    }
+    .snav-btn.active .snav-count.entry { background:#DCFCE7; color:#15803D; }
+    .snav-btn.active .snav-count.exit  { background:#FFE4E6; color:#BE123C; }
+    .snav-btn.active .snav-count.cmp   { background:#EFF6FF; color:#1B4FD8; }
+    .snav-btn.active .snav-count.hist  { background:#F5F3FF; color:#7C3AED; }
+    .snav-btn.active .snav-count.watch { background:#FFFBEB; color:#B45309; }
+    .snav-count { background:#D1D5DB; color:#6B7280; }
+
+    /* ══ Star button ══ */
+    .star-btn {
+      background:none; border:none; cursor:pointer; font-size:17px; line-height:1;
+      color:#D1D5DB; padding:2px 4px; border-radius:4px; transition:color .15s, transform .1s;
+      vertical-align:middle;
+    }
+    .star-btn:hover { transform:scale(1.2); }
+    .star-btn.starred { color:#F59E0B; }
+
+    /* ══ Watch section ══ */
+    .panel-icon.watch { background:#FFFBEB; }
+    .watch-empty {
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      gap:10px; padding:56px 24px; color:#9CA3AF; text-align:center;
+    }
+    .watch-empty-icon { font-size:40px; }
+    .watch-empty-title { font-size:15px; font-weight:700; color:#374151; }
+    .watch-empty-hint  { font-size:13px; }
+
+    /* ══ Panel ══ */
+    .panel { background:#fff; border:1px solid #E5E7EB; border-radius:0 16px 16px 16px; overflow:hidden; }
+    .section-wrap { display:none; }
+    .section-wrap.active { display:block; }
+
+    .panel-head {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:16px 24px; border-bottom:1px solid #F3F4F6;
+    }
+    .panel-title { display:flex; align-items:center; gap:10px; }
+    .panel-icon  { width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:18px; }
+    .panel-icon.entry  { background:#F0FDF4; }
+    .panel-icon.exit   { background:#FFF1F2; }
+    .panel-icon.cmp    { background:#EFF6FF; }
+    .panel-icon.hist   { background:#F5F3FF; }
+    .panel-title h2 { font-size:15px; font-weight:700; }
+    .panel-title p  { font-size:12px; color:#9CA3AF; margin-top:2px; }
+    .panel-badge { font-size:11px; color:#6B7280; background:#F3F4F6; padding:4px 10px; border-radius:999px; font-weight:500; }
+
+    /* ══ Table ══ */
+    .tbl-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; }
+    thead th {
+      background:#F9FAFB; padding:9px 12px;
+      font-size:11px; font-weight:600; color:#6B7280;
+      text-transform:uppercase; letter-spacing:.06em;
+      white-space:nowrap; text-align:left;
+    }
+    thead th:first-child { padding-left:24px; }
+    thead th:last-child  { padding-right:24px; text-align:center; }
+    thead th.r { text-align:right; }
+    tbody tr { border-top:1px solid #F3F4F6; cursor:pointer; transition:background .12s; }
+    tbody tr:hover { background:#F5F8FF; }
+    tbody td { padding:12px 12px; font-size:13.5px; white-space:nowrap; vertical-align:middle; }
+    tbody td:first-child { padding-left:24px; }
+    tbody td:last-child  { padding-right:24px; text-align:center; }
+    tbody td.r { text-align:right; }
+
+    .rank { font-size:12px; color:#D1D5DB; font-weight:700; min-width:18px; display:inline-block; text-align:right; }
+    tbody tr:nth-child(-n+3) .rank { color:#F59E0B; }
+
+    .stock-name { font-weight:700; color:#111827; font-size:14px; }
+    .stock-code { font-size:11px; color:#9CA3AF; margin-top:1px; }
+
+    /* Entry signal */
+    .entry-sig {
+      display:inline-flex; align-items:center; gap:5px;
+      padding:3px 10px; border-radius:999px; font-size:11px; font-weight:700; white-space:nowrap;
+    }
+    .entry-sig-dot { width:6px; height:6px; border-radius:50%; }
+    .entry-sig.green  { background:#F0FDF4; color:#15803D; } .entry-sig.green  .entry-sig-dot { background:#22C55E; }
+    .entry-sig.yellow { background:#FFFBEB; color:#92400E; } .entry-sig.yellow .entry-sig-dot { background:#F59E0B; }
+    .entry-sig.red    { background:#FFF1F2; color:#9F1239; } .entry-sig.red    .entry-sig-dot { background:#F43F5E; }
+
+    /* Exit action — NOT traffic lights */
+    .exit-action {
+      display:inline-flex; align-items:center; gap:5px;
+      padding:3px 10px; border-radius:6px; font-size:11px; font-weight:700; white-space:nowrap;
+    }
+    .exit-action.reduce { background:#FFFBEB; color:#92400E; border:1px solid #FDE68A; }
+    .exit-action.exit   { background:#1F2937; color:#F9FAFB; }
+    .exit-action.urgent { background:#111827; color:#FEF2F2; border:1px solid #F43F5E; }
+
+    /* Price */
+    .price { font-weight:700; color:#111827; font-variant-numeric:tabular-nums; }
+    .up    { color:#DC2626; font-weight:700; }
+    .down  { color:#16A34A; font-weight:700; }
+    .flat  { color:#6B7280; font-weight:700; }
+
+    /* Score */
+    .score { display:inline-flex; align-items:center; justify-content:center; min-width:38px; padding:2px 8px; border-radius:6px; font-size:13px; font-weight:800; }
+    .score.hi { background:#F0FDF4; color:#15803D; }
+    .score.md { background:#FFFBEB; color:#92400E; }
+    .score.lo { background:#FFF1F2; color:#BE123C; }
+
+    /* Tags */
+    .tags { display:flex; gap:4px; }
+    .tag  { background:#F3F4F6; color:#374151; font-size:11px; padding:2px 7px; border-radius:4px; font-weight:500; }
+    .arrow { color:#D1D5DB; font-size:18px; }
+
+    /* ══ Compare section ══ */
+    .cmp-selector {
+      display:flex; align-items:center; gap:10px; padding:18px 24px;
+      border-bottom:1px solid #F3F4F6; flex-wrap:wrap;
+    }
+    .cmp-select-wrap { flex:1; min-width:180px; max-width:300px; }
+    .cmp-select-wrap label { display:block; font-size:12px; font-weight:600; color:#6B7280; margin-bottom:5px; }
+    select {
+      width:100%; padding:8px 12px; border:1px solid #D1D5DB; border-radius:8px;
+      font-size:13.5px; color:#111827; background:#fff; appearance:none;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath fill='%236B7280' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
+      background-repeat:no-repeat; background-position:right 12px center; font-family:inherit; cursor:pointer;
+    }
+    select:focus { outline:none; border-color:#1B4FD8; box-shadow:0 0 0 3px rgba(27,79,216,.12); }
+    .vs-badge { width:34px; height:34px; border-radius:50%; background:#F3F4F6; border:2px solid #E5E7EB; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:#6B7280; flex-shrink:0; align-self:flex-end; margin-bottom:2px; }
+    .cmp-btn { padding:8px 20px; border-radius:8px; border:none; background:#1B4FD8; color:#fff; font-size:13px; font-weight:700; cursor:pointer; transition:background .15s; align-self:flex-end; margin-bottom:2px; font-family:inherit; white-space:nowrap; }
+    .cmp-btn:hover { background:#1641B5; }
+
+    #cmpResult { display:none; padding:0 24px 24px; }
+    #cmpResult.visible { display:block; }
+    .cmp-divider { height:1px; background:#F3F4F6; margin:0 0 18px; }
+    .cmp-section { margin-bottom:20px; }
+    .cmp-sec-title { font-size:11px; font-weight:700; color:#6B7280; letter-spacing:.06em; text-transform:uppercase; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+    .cmp-sec-title::after { content:''; flex:1; height:1px; background:#F3F4F6; }
+    .cmp-legend { display:flex; gap:14px; align-items:center; margin-bottom:12px; }
+    .legend-item { display:flex; align-items:center; gap:6px; font-size:12px; color:#374151; font-weight:600; }
+    .legend-dot  { width:10px; height:10px; border-radius:50%; }
+    .perf-table { width:100%; border-collapse:collapse; }
+    .perf-table th { font-size:11px; font-weight:600; color:#9CA3AF; padding:5px 0; text-align:right; }
+    .perf-table th:first-child { text-align:left; width:80px; }
+    .perf-table td { padding:7px 0; font-size:14px; font-weight:700; text-align:right; border-top:1px solid #F9FAFB; }
+    .perf-table td:first-child { text-align:left; font-size:12px; font-weight:600; color:#6B7280; }
+    .col-a { color:#1B4FD8; } .col-b { color:#7C3AED; }
+    .ind-grid  { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+    .ind-card  { border:1px solid #E5E7EB; border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; gap:6px; }
+    .ind-label { font-size:11px; color:#9CA3AF; font-weight:600; }
+    .ind-row   { display:flex; align-items:center; gap:8px; }
+    .ind-name  { font-size:12px; color:#374151; font-weight:600; min-width:46px; }
+    .ind-bar-wrap { flex:1; height:6px; background:#F3F4F6; border-radius:3px; overflow:hidden; }
+    .ind-bar   { height:100%; border-radius:3px; transition:width .4s ease; }
+    .bar-a { background:#3B82F6; } .bar-b { background:#8B5CF6; }
+    .ind-val { font-size:12px; font-weight:700; min-width:36px; text-align:right; }
+    .trend-grid { display:flex; gap:8px; flex-wrap:wrap; }
+    .trend-item { display:flex; align-items:center; gap:7px; background:#F9FAFB; border:1px solid #E5E7EB; border-radius:10px; padding:9px 12px; flex:1; min-width:150px; }
+    .trend-label { font-size:12px; color:#6B7280; flex:1; }
+    .chip { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700; }
+    .chip.bull  { background:#FEF2F2; color:#DC2626; }
+    .chip.bear  { background:#F0FDF4; color:#16A34A; }
+    .chip.range { background:#FFFBEB; color:#92400E; }
+    .ai-box { background:linear-gradient(135deg,#EFF6FF,#F5F3FF); border:1px solid #BFDBFE; border-radius:12px; padding:14px 16px; display:flex; gap:10px; }
+    .ai-icon { font-size:18px; flex-shrink:0; }
+    .ai-text { font-size:13.5px; line-height:1.75; color:#1E40AF; font-weight:500; }
+
+    /* ══ Filter bar ══ */
+    .filter-bar {
+      display: flex; align-items: center; gap: 8px; padding: 10px 20px;
+      border-bottom: 1px solid #F3F4F6; flex-wrap: wrap; background: #FAFAFA;
+    }
+    .filter-search-box {
+      display: flex; align-items: center; gap: 5px;
+      border: 1px solid #E5E7EB; border-radius: 8px; padding: 5px 10px;
+      background: #fff; min-width: 150px; max-width: 200px; flex-shrink: 0;
+    }
+    .filter-search-box input {
+      border: none; outline: none; font-size: 12px; color: #374151;
+      font-family: inherit; background: transparent; width: 100%;
+    }
+    .filter-search-box input::placeholder { color: #9CA3AF; }
+    .filter-select {
+      padding: 5px 10px; border: 1px solid #E5E7EB; border-radius: 8px;
+      font-size: 12px; color: #374151; font-family: inherit; background: #fff;
+      cursor: pointer; appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath fill='%236B7280' d='M5 6L0 0h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 8px center; padding-right: 24px;
+    }
+    .filter-divider { width: 1px; height: 20px; background: #E5E7EB; flex-shrink: 0; }
+    .filter-pills { display: flex; gap: 3px; align-items: center; }
+    .filter-label { font-size: 11px; color: #9CA3AF; font-weight: 600; white-space: nowrap; }
+    .fpill {
+      padding: 4px 9px; border: 1px solid #E5E7EB; border-radius: 5px;
+      font-size: 11px; font-weight: 600; color: #6B7280; background: #fff;
+      cursor: pointer; font-family: inherit; transition: all .12s; white-space: nowrap;
+    }
+    .fpill.active { background: #1B4FD8; color: #fff; border-color: #1B4FD8; }
+    .fpill:hover:not(.active) { border-color: #9CA3AF; background: #F3F4F6; }
+    .filter-count { font-size: 11px; color: #9CA3AF; margin-left: auto; white-space: nowrap; font-weight: 500; }
+
+    /* ══ History section ══ */
+    .hist-controls {
+      display:flex; align-items:center; gap:10px; padding:16px 24px;
+      border-bottom:1px solid #F3F4F6; flex-wrap:wrap;
+    }
+    .hist-input {
+      padding:8px 12px; border:1px solid #D1D5DB; border-radius:8px;
+      font-size:13px; font-family:inherit; color:#111827;
+    }
+    .hist-input:focus { outline:none; border-color:#1B4FD8; box-shadow:0 0 0 3px rgba(27,79,216,.12); }
+    input[type="date"].hist-input { min-width:140px; }
+    .search-input { min-width:180px; flex:1; max-width:240px; }
+    .filter-tabs  { display:flex; gap:4px; }
+    .filter-tab   { padding:6px 14px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; border:1px solid #E5E7EB; background:#F9FAFB; color:#6B7280; font-family:inherit; transition:all .15s; }
+    .filter-tab.active { background:#1B4FD8; color:#fff; border-color:#1B4FD8; }
+    .hist-date-label { font-size:12px; color:#6B7280; font-weight:600; white-space:nowrap; }
+
+    /* ══ Disclaimer ══ */
+    .disclaimer { display:flex; gap:10px; background:#FFFBEB; border:1px solid #FDE68A; border-radius:12px; padding:14px 18px; margin-top:16px; }
+    .disclaimer p { font-size:12px; color:#78350F; line-height:1.7; }
+    .disclaimer strong { font-weight:700; }
+
+    /* ══ Lookup tab ══ */
+    .lookup-searchbar {
+      display:flex; align-items:center; gap:10px; padding:18px 24px;
+      border-bottom:1px solid #F3F4F6;
+    }
+    .lookup-input-wrap {
+      flex:1; display:flex; align-items:center; gap:8px;
+      border:1.5px solid #D1D5DB; border-radius:10px;
+      padding:9px 14px; background:#fff; position:relative;
+      transition:border-color .15s;
+    }
+    .lookup-input-wrap:focus-within { border-color:#1B4FD8; box-shadow:0 0 0 3px rgba(27,79,216,.1); }
+    .lookup-icon { font-size:15px; flex-shrink:0; }
+    .lookup-input {
+      flex:1; border:none; outline:none; font-size:14px;
+      color:#111827; font-family:inherit; background:transparent;
+    }
+    .lookup-input::placeholder { color:#9CA3AF; }
+    .lookup-btn {
+      padding:10px 22px; border-radius:9px; border:none;
+      background:#1B4FD8; color:#fff; font-size:14px; font-weight:700;
+      cursor:pointer; font-family:inherit; white-space:nowrap; transition:background .15s;
+      flex-shrink:0;
+    }
+    .lookup-btn:hover { background:#1641B5; }
+
+    /* Autocomplete */
+    .lookup-autocomplete {
+      position:absolute; top:calc(100% + 6px); left:0; right:0;
+      background:#fff; border:1px solid #E5E7EB; border-radius:10px;
+      box-shadow:0 8px 24px rgba(0,0,0,.1); z-index:50; overflow:hidden;
+      display:none;
+    }
+    .lookup-autocomplete.open { display:block; }
+    .lkac-item {
+      display:flex; align-items:center; gap:10px; padding:9px 14px;
+      cursor:pointer; transition:background .1s; font-size:13.5px;
+    }
+    .lkac-item:hover, .lkac-item.focused { background:#EFF6FF; }
+    .lkac-code { font-weight:700; color:#1B4FD8; min-width:44px; }
+    .lkac-name { color:#374151; }
+
+    /* Loading / Error / Empty */
+    .lookup-loading {
+      display:flex; align-items:center; gap:12px; padding:32px 24px;
+      font-size:14px; color:#6B7280;
+    }
+    .lookup-error {
+      margin:16px 24px; background:#FFF1F2; border:1px solid #FECDD3;
+      border-radius:10px; padding:14px 18px; font-size:13.5px; color:#BE123C;
+    }
+    .lookup-empty {
+      display:flex; flex-direction:column; align-items:center; gap:10px;
+      padding:52px 24px; text-align:center;
+    }
+    .lookup-empty-icon { font-size:40px; }
+    .lookup-empty-title { font-size:16px; font-weight:700; color:#374151; }
+    .lookup-empty-hint  { font-size:13px; color:#9CA3AF; max-width:340px; line-height:1.6; }
+    .lookup-quick { display:flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:center; margin-top:4px; }
+    .lookup-quick-label { font-size:12px; color:#9CA3AF; }
+    .lookup-chip {
+      padding:5px 12px; border:1px solid #E5E7EB; border-radius:999px;
+      font-size:12px; font-weight:600; color:#374151; background:#F9FAFB;
+      cursor:pointer; font-family:inherit; transition:all .12s;
+    }
+    .lookup-chip:hover { border-color:#1B4FD8; color:#1B4FD8; background:#EFF6FF; }
+
+    /* Stock header */
+    .lookup-stock-head {
+      display:flex; align-items:flex-start; justify-content:space-between;
+      padding:20px 0 16px; border-bottom:1px solid #F3F4F6; margin-bottom:18px;
+    }
+    .lookup-stock-name { font-size:22px; font-weight:800; color:#111827; }
+    .lookup-stock-code { font-size:13px; color:#9CA3AF; margin-top:3px; }
+    .lookup-stock-right { text-align:right; }
+    .lookup-price { font-size:22px; font-weight:800; color:#111827; font-variant-numeric:tabular-nums; }
+    .lookup-chg   { font-size:14px; font-weight:700; margin-top:3px; }
+
+    /* Two analysis cards */
+    .lk-cards { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }
+    .lk-card {
+      border-radius:12px; padding:18px 20px;
+      display:flex; flex-direction:column; gap:12px;
+    }
+    .lk-card-entry { background:#F0FDF4; border:1px solid #BBF7D0; }
+    .lk-card-exit  { background:#FFF1F2; border:1px solid #FECDD3; }
+    .lk-card-head {
+      display:flex; align-items:center; gap:8px;
+    }
+    .lk-card-icon  { font-size:18px; }
+    .lk-card-title { font-size:15px; font-weight:700; color:#111827; }
+    .lk-score-row  { display:flex; gap:16px; }
+    .lk-score-wrap, .lk-range-wrap { flex:1; }
+    .lk-score-label { font-size:11px; color:#6B7280; font-weight:600; margin-bottom:4px; }
+    .lk-score-num {
+      font-size:32px; font-weight:900; line-height:1;
+      color:#111827;
+    }
+    .lk-range-val { font-size:14px; font-weight:700; color:#374151; line-height:1.4; }
+    .lk-tags { display:flex; flex-wrap:wrap; gap:5px; }
+    .lk-reasons { display:flex; flex-direction:column; gap:5px; }
+    .lk-reason-item {
+      font-size:12.5px; color:#374151; line-height:1.5;
+      padding-left:12px; position:relative;
+    }
+    .lk-reason-item::before {
+      content:'·'; position:absolute; left:2px; color:#9CA3AF;
+    }
+
+    /* Technical indicators */
+    .lk-indicators {
+      background:#F9FAFB; border:1px solid #E5E7EB; border-radius:12px; padding:16px 18px;
+    }
+    .lk-ind-title {
+      font-size:11px; font-weight:700; color:#6B7280; letter-spacing:.06em;
+      text-transform:uppercase; margin-bottom:12px;
+    }
+    .lk-ind-grid {
+      display:grid; grid-template-columns:repeat(6,1fr); gap:10px;
+    }
+    .lk-ind-item { text-align:center; }
+    .lk-ind-label { font-size:11px; color:#9CA3AF; font-weight:600; margin-bottom:4px; }
+    .lk-ind-val   { font-size:14px; font-weight:800; color:#111827; }
+
+    .hidden { display:none !important; }
+
+    /* ══ Auth UI ══ */
+    .auth-login-btn {
+      display:flex; align-items:center; gap:5px; font-size:12px; font-weight:600;
+      color:#fff; background:#1B4FD8; border:none; padding:5px 12px;
+      border-radius:8px; cursor:pointer; font-family:inherit; transition:background .15s;
+    }
+    .auth-login-btn:hover { background:#1641B5; }
+    .auth-pill {
+      display:flex; align-items:center; gap:7px; background:#F0FDF4;
+      border:1px solid #BBF7D0; border-radius:999px; padding:3px 10px 3px 5px;
+    }
+    .auth-avatar { width:22px; height:22px; border-radius:50%; object-fit:cover; }
+    .auth-name { font-size:12px; font-weight:600; color:#15803D; max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .auth-logout {
+      font-size:11px; color:#9CA3AF; background:none; border:none;
+      cursor:pointer; padding:0; font-family:inherit; transition:color .12s;
+    }
+    .auth-logout:hover { color:#DC2626; }
+    .auth-syncing { font-size:11px; color:#9CA3AF; display:flex; align-items:center; gap:4px; }
+
+    /* ══ Responsive ══ */
+    @media (max-width:900px) { .stats { grid-template-columns:repeat(2,1fr); } .ind-grid { grid-template-columns:repeat(2,1fr); } .lk-ind-grid { grid-template-columns:repeat(3,1fr); } }
+    @media (max-width:640px) {
+      header { padding:0 14px; } .wrap { padding:14px 10px 40px; }
+      .update-time { display:none; }
+      .snav-btn { padding:8px 12px; font-size:12px; }
+      tbody td { padding:10px 8px; } tbody td:first-child { padding-left:14px; }
+      .lk-cards { grid-template-columns:1fr; }
+      .lk-ind-grid { grid-template-columns:repeat(3,1fr); }
+      .lookup-searchbar { padding:14px 14px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="ld-title">資料載入中…</div>
+  <div class="ld-msg" id="ldMsg">初始化</div>
+  <div class="ld-bar-wrap"><div class="ld-bar" id="ldBar"></div></div>
+</div>
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <div class="logo-mark">台</div>
+    <div class="logo-name">台股<span>雷達</span></div>
+  </div>
+  <div class="header-right">
+    <span class="update-time" id="updateTime"></span>
+    <a class="source-badge mock" id="srcBadge" href="settings.html">⚠️ 模擬資料</a>
+    <a class="settings-btn" href="backtest.html">📊 回測</a>
+    <a class="settings-btn" href="settings.html">⚙️ 設定</a>
+    <div id="authWrap"></div>
+    <div class="market-pill"><div class="pulse-dot"></div><span id="mktStatus">—</span></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">加權指數</div>
+      <div class="stat-val" id="idxVal">—</div>
+      <div class="stat-sub" id="idxSub">載入中…</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">🔥 進場機會</div>
+      <div class="stat-val entry-col" id="entryCnt">—</div>
+      <div class="stat-sub" id="entrySub">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">⚠️ 風險提醒</div>
+      <div class="stat-val exit-col" id="exitCnt">—</div>
+      <div class="stat-sub" id="exitSub">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">資料來源</div>
+      <div class="stat-val" id="srcVal" style="font-size:16px">—</div>
+      <div class="stat-sub"><a href="settings.html" style="color:#1B4FD8;text-decoration:none;font-size:12px">⚙️ 前往設定</a></div>
+    </div>
+  </div>
+
+  <!-- Section nav -->
+  <div class="section-nav">
+    <button class="snav-btn active" onclick="showSection('entry',this)">
+      🔥 進場機會 <span class="snav-count entry" id="nc-entry">0</span>
+    </button>
+    <button class="snav-btn" onclick="showSection('exit',this)">
+      ⚠️ 風險提醒 <span class="snav-count exit"  id="nc-exit">0</span>
+    </button>
+    <button class="snav-btn" onclick="showSection('cmp',this)">
+      📊 對照觀察室 <span class="snav-count cmp" id="nc-cmp">VS</span>
+    </button>
+    <button class="snav-btn" onclick="showSection('hist',this)">
+      📅 推薦回顧 <span class="snav-count hist" id="nc-hist">7天</span>
+    </button>
+    <button class="snav-btn" onclick="showSection('lookup',this)">
+      🔍 個股查詢 <span class="snav-count" style="background:#F3F4F6;color:#6B7280" id="nc-lookup">自訂</span>
+    </button>
+    <button class="snav-btn" onclick="showSection('watch',this)">
+      ⭐ 個股追蹤 <span class="snav-count watch" id="nc-watch">0</span>
+    </button>
+  </div>
+
+  <!-- ══ 進場機會 ══ -->
+  <div class="section-wrap active" id="sec-entry">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          <div class="panel-icon entry">🔥</div>
+          <div>
+            <h2>進場機會</h2>
+            <p id="entryModeDesc">📡 全市場掃描中…</p>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button onclick="rescanMarket(this)" style="
+            padding:5px 12px;border-radius:8px;border:1px solid #D1D5DB;
+            background:#fff;color:#6B7280;font-size:12px;font-weight:600;
+            cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap">
+            🔄 重掃
+          </button>
+          <span class="panel-badge" id="entryDate">—</span>
+        </div>
+      </div>
+      <div class="filter-bar" id="entryFilterBar">
+        <select class="filter-select" id="eSector" onchange="applyFilters('entry')">
+          <option value="all">全部產業</option>
+          <option value="半導體">半導體</option>
+          <option value="電子製造">電子製造</option>
+          <option value="電子零組件">電子零組件</option>
+          <option value="金融">金融</option>
+          <option value="電信">電信</option>
+          <option value="鋼鐵石化">鋼鐵石化</option>
+          <option value="汽車">汽車</option>
+        </select>
+        <div class="filter-divider"></div>
+        <span class="filter-label">分數</span>
+        <div class="filter-pills" id="eScorePills">
+          <button class="fpill active" onclick="setFilter('entry','score','all',this)">全部</button>
+          <button class="fpill"        onclick="setFilter('entry','score','high',this)">高 ≥80</button>
+          <button class="fpill"        onclick="setFilter('entry','score','mid',this)">中 65–79</button>
+          <button class="fpill"        onclick="setFilter('entry','score','low',this)">低 &lt;65</button>
+        </div>
+        <div class="filter-divider"></div>
+        <span class="filter-label">燈號</span>
+        <div class="filter-pills" id="eSigPills">
+          <button class="fpill active" onclick="setFilter('entry','sig','all',this)">全部</button>
+          <button class="fpill"        onclick="setFilter('entry','sig','green',this)">🟢 可進場</button>
+          <button class="fpill"        onclick="setFilter('entry','sig','yellow',this)">🟡 觀察中</button>
+          <button class="fpill"        onclick="setFilter('entry','sig','red',this)">🔴 不建議</button>
+        </div>
+        <span class="filter-count" id="eFilterCount">0 / 0 檔</span>
+      </div>
+      <!-- 資料範疇說明 -->
+      <div id="entryScopeBar" style="
+        padding:7px 24px; font-size:11.5px; color:#6B7280;
+        background:#FAFAFA; border-bottom:1px solid #F3F4F6;
+        display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        <span id="entryScopeIcon">📡</span>
+        <span id="entryScopeText">正在掃描 TWSE 全市場資料…</span>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>股票</th><th style="font-size:10px;color:#9CA3AF">產業</th>
+              <th class="r">現價</th><th class="r">今日漲跌</th>
+              <th>訊號</th><th class="r">強度</th><th class="r">進場參考區間</th><th>關鍵理由</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="entryTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 風險提醒 ══ -->
+  <div class="section-wrap" id="sec-exit">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          <div class="panel-icon exit">⚠️</div>
+          <div>
+            <h2>風險提醒</h2>
+            <p id="exitModeDesc">📡 全市場掃描中…</p>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="panel-badge" id="exitDate">—</span>
+        </div>
+      </div>
+      <div class="filter-bar" id="exitFilterBar">
+        <select class="filter-select" id="xSector" onchange="applyFilters('exit')">
+          <option value="all">全部產業</option>
+          <option value="半導體">半導體</option>
+          <option value="電子製造">電子製造</option>
+          <option value="電子零組件">電子零組件</option>
+          <option value="金融">金融</option>
+          <option value="電信">電信</option>
+          <option value="鋼鐵石化">鋼鐵石化</option>
+          <option value="汽車">汽車</option>
+        </select>
+        <div class="filter-divider"></div>
+        <span class="filter-label">分數</span>
+        <div class="filter-pills" id="xScorePills">
+          <button class="fpill active" onclick="setFilter('exit','score','all',this)">全部</button>
+          <button class="fpill"        onclick="setFilter('exit','score','high',this)">高 ≥80</button>
+          <button class="fpill"        onclick="setFilter('exit','score','mid',this)">中 65–79</button>
+          <button class="fpill"        onclick="setFilter('exit','score','low',this)">低 &lt;65</button>
+        </div>
+        <div class="filter-divider"></div>
+        <span class="filter-label">出場動作</span>
+        <div class="filter-pills" id="xActionPills">
+          <button class="fpill active" onclick="setFilter('exit','action','all',this)">全部</button>
+          <button class="fpill"        onclick="setFilter('exit','action','urgent',this)">🚨 立即出場</button>
+          <button class="fpill"        onclick="setFilter('exit','action','exit',this)">⛔ 建議出場</button>
+          <button class="fpill"        onclick="setFilter('exit','action','reduce',this)">⚠️ 建議減碼</button>
+        </div>
+        <span class="filter-count" id="xFilterCount">0 / 0 檔</span>
+      </div>
+      <!-- 資料範疇說明 -->
+      <div id="exitScopeBar" style="
+        padding:7px 24px; font-size:11.5px; color:#6B7280;
+        background:#FAFAFA; border-bottom:1px solid #F3F4F6;
+        display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        <span>📡</span>
+        <span id="exitScopeText">正在掃描 TWSE 全市場資料…</span>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>股票</th><th style="font-size:10px;color:#9CA3AF">產業</th>
+              <th class="r">現價</th><th class="r">今日漲跌</th>
+              <th>出場動作</th><th class="r">強度</th><th class="r">出場警示點</th><th>風險理由</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="exitTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 對照觀察室 ══ -->
+  <div class="section-wrap" id="sec-cmp">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          <div class="panel-icon cmp">📊</div>
+          <div><h2>對照觀察室</h2><p>比較個股與大盤、ETF 或另一檔股票的強弱</p></div>
+        </div>
+        <span class="panel-badge">自訂比較</span>
+      </div>
+      <div class="cmp-selector">
+        <div class="cmp-select-wrap">
+          <label>個股 A</label>
+          <select id="selectA">
+            <option value="2330">台積電（2330）</option><option value="2454">聯發科（2454）</option>
+            <option value="2317">鴻海（2317）</option><option value="2382">廣達（2382）</option>
+            <option value="2308">台達電（2308）</option><option value="2303">聯電（2303）</option>
+            <option value="3034">聯詠（3034）</option><option value="2379">瑞昱（2379）</option>
+            <option value="3008">大立光（3008）</option><option value="2395">研華（2395）</option>
+            <option value="3443">創意（3443）</option><option value="2881">富邦金（2881）</option>
+          </select>
+        </div>
+        <div class="vs-badge">VS</div>
+        <div class="cmp-select-wrap">
+          <label>比較目標 B</label>
+          <select id="selectB">
+            <optgroup label="大盤 / 指數">
+              <option value="TAIEX">加權指數（大盤）</option>
+              <option value="SEMI">半導體類股指數</option>
+              <option value="FIN">金融類股指數</option>
+              <option value="ELEC">電子類股指數</option>
+            </optgroup>
+            <optgroup label="ETF">
+              <option value="0050">台灣50（0050）</option>
+              <option value="0056">高股息（0056）</option>
+              <option value="00878">國泰永續高股息（00878）</option>
+              <option value="00881">國泰台灣5G+（00881）</option>
+            </optgroup>
+            <optgroup label="個股">
+              <option value="2454">聯發科（2454）</option><option value="2317">鴻海（2317）</option>
+              <option value="2382">廣達（2382）</option><option value="2308">台達電（2308）</option>
+            </optgroup>
+          </select>
+        </div>
+        <button class="cmp-btn" onclick="runCompare()">開始比較</button>
+      </div>
+      <div id="cmpResult">
+        <div class="cmp-divider"></div>
+        <div class="cmp-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#3B82F6"></div><span id="legA">—</span></div>
+          <div class="legend-item"><div class="legend-dot" style="background:#8B5CF6"></div><span id="legB">—</span></div>
+        </div>
+        <div class="cmp-section">
+          <div class="cmp-sec-title">基本表現</div>
+          <table class="perf-table">
+            <thead><tr><th>週期</th><th class="col-a" id="phA">—</th><th class="col-b" id="phB">—</th><th style="color:#9CA3AF">差異</th></tr></thead>
+            <tbody id="perfBody"></tbody>
+          </table>
+        </div>
+        <div class="cmp-section">
+          <div class="cmp-sec-title">強弱比較</div>
+          <div class="ind-grid" id="strGrid"></div>
+        </div>
+        <div class="cmp-section">
+          <div class="cmp-sec-title">量能比較</div>
+          <div class="ind-grid" id="volGrid"></div>
+        </div>
+        <div class="cmp-section">
+          <div class="cmp-sec-title">趨勢狀態</div>
+          <div class="trend-grid" id="trendGrid"></div>
+        </div>
+        <div class="cmp-section" style="margin-bottom:0">
+          <div class="cmp-sec-title">AI 結論</div>
+          <div class="ai-box"><span class="ai-icon">🤖</span><p class="ai-text" id="aiText">—</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 推薦回顧 ══ -->
+  <div class="section-wrap" id="sec-hist">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          <div class="panel-icon hist">📅</div>
+          <div><h2>推薦回顧</h2><p>查詢每日系統推薦紀錄，追蹤準確度</p></div>
+        </div>
+        <span class="panel-badge">近 7 天</span>
+      </div>
+      <div class="hist-controls">
+        <span class="hist-date-label">日期</span>
+        <input type="date" class="hist-input" id="histDate" />
+        <input type="text" class="hist-input search-input" id="histSearch" placeholder="搜尋股票名稱或代號…" oninput="renderHistory()" />
+        <div class="filter-tabs">
+          <button class="filter-tab active" onclick="setHistFilter('all',this)">全部</button>
+          <button class="filter-tab" onclick="setHistFilter('entry',this)">🔥 進場</button>
+          <button class="filter-tab" onclick="setHistFilter('exit',this)">⚠️ 出場</button>
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th><th>類型</th><th>股票</th><th class="r">當日現價</th>
+              <th class="r">漲跌</th><th class="r">進場參考</th><th class="r">出場參考</th>
+              <th>訊號 / 動作</th><th>理由</th>
+            </tr>
+          </thead>
+          <tbody id="histTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 個股查詢 ══ -->
+  <div class="section-wrap" id="sec-lookup">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          <div class="panel-icon" style="background:#F0F9FF">🔍</div>
+          <div><h2>個股查詢</h2><p>搜尋任意台股，同時分析進場機會與出場風險</p></div>
+        </div>
+      </div>
+
+      <!-- Search bar -->
+      <div class="lookup-searchbar">
+        <div class="lookup-input-wrap">
+          <span class="lookup-icon">🔍</span>
+          <input type="text" id="lookupInput" class="lookup-input" placeholder="輸入股票代號或名稱（例：2330 或 台積電）…"
+            oninput="onLookupInput()" onkeydown="onLookupKey(event)" autocomplete="off" />
+          <div class="lookup-autocomplete" id="lookupAC"></div>
+        </div>
+        <button class="lookup-btn" onclick="analyzeStock()">開始分析</button>
+      </div>
+
+      <!-- Loading -->
+      <div id="lookupLoading" class="lookup-loading hidden">
+        <div class="spinner" style="width:28px;height:28px;border-width:2px"></div>
+        <span>資料載入中，請稍候…</span>
+      </div>
+
+      <!-- Error -->
+      <div id="lookupError" class="lookup-error hidden"></div>
+
+      <!-- Empty state -->
+      <div id="lookupEmpty" class="lookup-empty">
+        <div class="lookup-empty-icon">📈</div>
+        <div class="lookup-empty-title">輸入代號或名稱開始查詢</div>
+        <div class="lookup-empty-hint">可查詢上市、上櫃任何個股，系統將自動進行進場與風險分析</div>
+        <div class="lookup-quick">
+          <span class="lookup-quick-label">熱門：</span>
+          <button class="lookup-chip" onclick="quickLookup('2330','台積電')">台積電 2330</button>
+          <button class="lookup-chip" onclick="quickLookup('2454','聯發科')">聯發科 2454</button>
+          <button class="lookup-chip" onclick="quickLookup('2317','鴻海')">鴻海 2317</button>
+          <button class="lookup-chip" onclick="quickLookup('0050','台灣50')">台灣50 0050</button>
+        </div>
+      </div>
+
+      <!-- Result -->
+      <div id="lookupResult" class="hidden" style="padding:0 24px 28px">
+
+        <!-- Stock header -->
+        <div class="lookup-stock-head">
+          <div class="lookup-stock-left">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="lookup-stock-name" id="lkName">—</div>
+              <button class="star-btn" id="lkStarBtn" onclick="toggleLookupWatch(event)" title="加入追蹤" style="font-size:22px">☆</button>
+            </div>
+            <div class="lookup-stock-code" id="lkCode">—</div>
+          </div>
+          <div class="lookup-stock-right">
+            <div class="lookup-price" id="lkPrice">—</div>
+            <div class="lookup-chg" id="lkChg">—</div>
+          </div>
+        </div>
+
+        <!-- Two analysis cards -->
+        <div class="lk-cards">
+
+          <!-- Entry card -->
+          <div class="lk-card lk-card-entry">
+            <div class="lk-card-head">
+              <span class="lk-card-icon">🔥</span>
+              <span class="lk-card-title">進場分析</span>
+              <span class="entry-sig" id="lkEntrySig" style="margin-left:auto"></span>
+            </div>
+            <div class="lk-score-row">
+              <div class="lk-score-wrap">
+                <div class="lk-score-label">強度分數</div>
+                <div class="lk-score-num" id="lkEntryScore">—</div>
+              </div>
+              <div class="lk-range-wrap">
+                <div class="lk-score-label">進場參考區間</div>
+                <div class="lk-range-val" id="lkEntryRange">—</div>
+              </div>
+            </div>
+            <div class="lk-tags" id="lkEntryTags"></div>
+            <div class="lk-reasons" id="lkEntryReasons"></div>
+          </div>
+
+          <!-- Exit card -->
+          <div class="lk-card lk-card-exit">
+            <div class="lk-card-head">
+              <span class="lk-card-icon">⚠️</span>
+              <span class="lk-card-title">風險分析</span>
+              <span class="exit-action" id="lkExitAction" style="margin-left:auto"></span>
+            </div>
+            <div class="lk-score-row">
+              <div class="lk-score-wrap">
+                <div class="lk-score-label">風險分數</div>
+                <div class="lk-score-num" id="lkExitScore">—</div>
+              </div>
+              <div class="lk-range-wrap">
+                <div class="lk-score-label">出場警示點（MA20）</div>
+                <div class="lk-range-val" id="lkStopLoss">—</div>
+              </div>
+            </div>
+            <div class="lk-tags" id="lkExitTags"></div>
+            <div class="lk-reasons" id="lkExitReasons"></div>
+          </div>
+        </div>
+
+        <!-- Technical indicators -->
+        <div class="lk-indicators">
+          <div class="lk-ind-title">技術指標 / 籌碼</div>
+          <div class="lk-ind-grid">
+            <div class="lk-ind-item"><div class="lk-ind-label">MA5</div><div class="lk-ind-val" id="lkMA5">—</div></div>
+            <div class="lk-ind-item"><div class="lk-ind-label">MA20</div><div class="lk-ind-val" id="lkMA20">—</div></div>
+            <div class="lk-ind-item"><div class="lk-ind-label">MA60</div><div class="lk-ind-val" id="lkMA60">—</div></div>
+            <div class="lk-ind-item"><div class="lk-ind-label">量比（近20日）</div><div class="lk-ind-val" id="lkVR">—</div></div>
+            <div class="lk-ind-item"><div class="lk-ind-label">外資近期</div><div class="lk-ind-val" id="lkFNet">—</div></div>
+            <div class="lk-ind-item"><div class="lk-ind-label">投信近期</div><div class="lk-ind-val" id="lkTNet">—</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 個股追蹤 ══ -->
+  <div class="section-wrap" id="sec-watch">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          <div class="panel-icon watch">⭐</div>
+          <div><h2>個股追蹤</h2><p>點擊星星追蹤個股，隨時查看追蹤清單</p></div>
+        </div>
+        <span class="panel-badge" id="watchBadge">0 檔</span>
+      </div>
+      <div id="watchContent">
+        <div class="watch-empty" id="watchEmpty">
+          <div class="watch-empty-icon">☆</div>
+          <div class="watch-empty-title">尚未追蹤任何個股</div>
+          <div class="watch-empty-hint">在進場機會或風險提醒列表中，點擊星星 ☆ 即可加入追蹤</div>
+        </div>
+        <div class="tbl-wrap" id="watchTableWrap" style="display:none">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th><th>股票</th><th class="r">現價</th><th class="r">今日漲跌</th>
+                <th>進場訊號</th><th>出場動作</th><th>標籤</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="watchTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Disclaimer -->
+  <div class="disclaimer">
+    <span style="font-size:15px;flex-shrink:0;margin-top:1px">⚠️</span>
+    <p><strong>免責聲明：</strong>本網站提供之資訊僅供研究與參考，不構成任何投資建議、買賣推薦或獲利保證。股票投資具有風險，使用者應自行判斷並承擔投資結果。歷史命中率為回測數據，不代表未來實際績效。</p>
+    <p style="margin-top:6px;font-size:11px;color:#9CA3AF">進場參考區間由訊號觸發當日近 20 日支撐與壓力價決定，若隔日開盤突破上限，請勿過度追高。出場警示點為 MA20 均線，跌破後建議審慎評估是否執行出場。</p>
+  </div>
+
+</div>
+
+<!-- Firebase SDK (loaded only when config exists) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="data-service.js"></script>
+<script>
+/* ══ Section nav ══ */
+function showSection(id, btn) {
+  document.querySelectorAll('.section-wrap').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.snav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('sec-' + id).classList.add('active');
+  btn.classList.add('active');
+  if (id === 'hist')  renderHistory();
+  if (id === 'watch') renderWatchlist();
+}
+
+/* ══ Filter state ══ */
+let entryAllData = [], exitAllData = [];
+const eFilters = { search:'', sector:'all', score:'all', sig:'all' };
+const xFilters = { search:'', sector:'all', score:'all', action:'all' };
+
+function applyFilters(type) {
+  const f    = type === 'entry' ? eFilters : xFilters;
+  const all  = type === 'entry' ? entryAllData : exitAllData;
+  // Sync search input value into filter state
+  const searchEl = document.getElementById(type === 'entry' ? 'eSearch' : 'xSearch');
+  if (searchEl) f.search = searchEl.value.trim().toLowerCase();
+  // Sync sector select
+  const sectorEl = document.getElementById(type === 'entry' ? 'eSector' : 'xSector');
+  if (sectorEl) f.sector = sectorEl.value;
+
+  let data = all;
+  if (f.sector !== 'all') data = data.filter(s => s.sector === f.sector);
+  if (f.score === 'high') data = data.filter(s => s.score >= 80);
+  else if (f.score === 'mid') data = data.filter(s => s.score >= 65 && s.score < 80);
+  else if (f.score === 'low') data = data.filter(s => s.score < 65);
+
+  if (type === 'entry' && f.sig !== 'all')    data = data.filter(s => s.sig === f.sig);
+  if (type === 'exit'  && f.action !== 'all') data = data.filter(s => (s.action?.cls || '') === f.action);
+
+  if (f.search) {
+    const q = f.search;
+    data = data.filter(s =>
+      s.name.toLowerCase().includes(q) || s.code.includes(q) || (s.sector||'').includes(q)
+    );
+  }
+
+  const rows = data.map((s,i) => type === 'entry' ? entryRow(s,i) : exitRow(s,i)).join('');
+  document.getElementById(type === 'entry' ? 'entryTbody' : 'exitTbody').innerHTML = rows ||
+    `<tr><td colspan="10" style="text-align:center;padding:32px;color:#9CA3AF;font-size:13px">無符合條件的個股</td></tr>`;
+  document.getElementById(type === 'entry' ? 'eFilterCount' : 'xFilterCount').textContent =
+    `${data.length} / ${all.length} 檔`;
+}
+
+function setFilter(type, key, val, btn) {
+  if (type === 'entry') eFilters[key] = val;
+  else xFilters[key] = val;
+  btn.closest('.filter-pills').querySelectorAll('.fpill').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters(type);
+}
+
+/* ══ Table helpers ══ */
+const sigLabel = { green:'可進場', yellow:'觀察中', red:'不建議' };
+function scoreClass(s) { return s >= 80 ? 'hi' : s >= 65 ? 'md' : 'lo'; }
+function chgClass(c)   { return String(c).startsWith('+') ? 'up' : String(c).startsWith('-') ? 'down' : 'flat'; }
+
+function entryRow(s, i) {
+  const tags = s.tags.map(t=>`<span class="tag">${t}</span>`).join('');
+  const cls  = s.sig === 'green' ? 'green' : s.sig === 'yellow' ? 'yellow' : 'red';
+  const watched = isWatched(s.code);
+  return `<tr onclick="goStock('${s.code}','entry')">
+    <td><span class="rank">${i+1}</span></td>
+    <td><div class="stock-name">${s.name}</div><div class="stock-code">${s.code}</div></td>
+    <td><span style="font-size:11px;color:#9CA3AF">${s.sector||'—'}</span></td>
+    <td class="r"><span class="price">${s.price ? '$'+s.price.toLocaleString() : '—'}</span></td>
+    <td class="r"><span class="${chgClass(s.chg)}">${s.chg}</span></td>
+    <td><span class="entry-sig ${cls}"><span class="entry-sig-dot"></span>${sigLabel[s.sig]}</span></td>
+    <td class="r"><span class="score ${scoreClass(s.score)}">${s.score}</span></td>
+    <td class="r"><span class="price" style="font-size:11px">${s.support && s.pressure ? '$'+s.support.toLocaleString()+' – $'+s.pressure.toLocaleString() : '—'}</span></td>
+    <td><div class="tags">${tags}</div></td>
+    <td><button class="star-btn${watched?' starred':''}" data-code="${s.code}" onclick="toggleWatch('${s.code}','${s.name}',event)" title="${watched?'取消追蹤':'加入追蹤'}">${watched?'★':'☆'}</button><span class="arrow">›</span></td>
+  </tr>`;
+}
+
+function exitRow(s, i) {
+  const tags = s.tags.map(t=>`<span class="tag">${t}</span>`).join('');
+  const act  = s.action || { icon:'⚠️', label:'建議減碼', cls:'reduce' };
+  const watched = isWatched(s.code);
+  return `<tr onclick="goStock('${s.code}','exit')">
+    <td><span class="rank">${i+1}</span></td>
+    <td><div class="stock-name">${s.name}</div><div class="stock-code">${s.code}</div></td>
+    <td><span style="font-size:11px;color:#9CA3AF">${s.sector||'—'}</span></td>
+    <td class="r"><span class="price">${s.price ? '$'+s.price.toLocaleString() : '—'}</span></td>
+    <td class="r"><span class="${chgClass(s.chg)}">${s.chg}</span></td>
+    <td><span class="exit-action ${act.cls}">${act.icon} ${act.label}</span></td>
+    <td class="r"><span class="score ${scoreClass(s.score || 0)}">${s.score || '—'}</span></td>
+    <td class="r"><span class="price">${s.stopLoss ? '$'+s.stopLoss.toLocaleString()+' 以下' : '—'}</span></td>
+    <td><div class="tags">${tags}</div></td>
+    <td><button class="star-btn${watched?' starred':''}" data-code="${s.code}" onclick="toggleWatch('${s.code}','${s.name}',event)" title="${watched?'取消追蹤':'加入追蹤'}">${watched?'★':'☆'}</button><span class="arrow">›</span></td>
+  </tr>`;
+}
+
+function goStock(code, type) {
+  location.href = `taiwan-stocks-detail.html?code=${code}&type=${type}`;
+}
+
+/* ══ Watchlist ══ */
+function getWatchlistData() {
+  try { return JSON.parse(localStorage.getItem('tw_watchlist') || '{}'); }
+  catch { return {}; }
+}
+function isWatched(code) { return !!getWatchlistData()[code]; }
+
+function toggleWatch(code, name, e) {
+  e.stopPropagation();
+  const wl = getWatchlistData();
+  if (wl[code]) delete wl[code];
+  else wl[code] = { code, name };
+  localStorage.setItem('tw_watchlist', JSON.stringify(wl));
+  // Update star icons in DOM without re-rendering the whole table
+  const watched = !!wl[code];
+  document.querySelectorAll(`.star-btn[data-code="${code}"]`).forEach(btn => {
+    btn.textContent = watched ? '★' : '☆';
+    btn.title = watched ? '取消追蹤' : '加入追蹤';
+    btn.classList.toggle('starred', watched);
+  });
+  updateWatchCount();
+  if (document.getElementById('sec-watch').classList.contains('active')) renderWatchlist();
+}
+
+function toggleLookupWatch(e) {
+  e.stopPropagation();
+  const btn = document.getElementById('lkStarBtn');
+  const code = btn.dataset.code, name = btn.dataset.name;
+  if (!code) return;
+  const wl = getWatchlistData();
+  if (wl[code]) delete wl[code]; else wl[code] = { code, name };
+  localStorage.setItem('tw_watchlist', JSON.stringify(wl));
+  const watched = !!wl[code];
+  btn.textContent = watched ? '★' : '☆';
+  btn.classList.toggle('starred', watched);
+  updateWatchCount();
+}
+
+function updateWatchCount() {
+  const count = Object.keys(getWatchlistData()).length;
+  document.getElementById('nc-watch').textContent = count || '0';
+}
+
+function renderWatchlist() {
+  const wl = getWatchlistData();
+  const codes = Object.keys(wl);
+  const badge = document.getElementById('watchBadge');
+  badge.textContent = codes.length + ' 檔';
+  if (codes.length === 0) {
+    document.getElementById('watchEmpty').style.display = '';
+    document.getElementById('watchTableWrap').style.display = 'none';
+    return;
+  }
+  document.getElementById('watchEmpty').style.display = 'none';
+  document.getElementById('watchTableWrap').style.display = '';
+  const rows = codes.map((code, i) => {
+    const entry = entryAllData.find(s => s.code === code);
+    const exit  = exitAllData.find(s => s.code === code);
+    const s = entry || exit || wl[code];
+    const name  = s.name || code;
+    const price = s.price ? '$' + s.price.toLocaleString() : '—';
+    const chg   = s.chg   ? `<span class="${chgClass(s.chg)}">${s.chg}</span>` : '—';
+    const sig   = entry ? `<span class="entry-sig ${entry.sig==='green'?'green':entry.sig==='yellow'?'yellow':'red'}"><span class="entry-sig-dot"></span>${sigLabel[entry.sig]}</span>` : '<span style="color:#D1D5DB">—</span>';
+    const act   = exit  ? `<span class="exit-action ${exit.action?.cls||'reduce'}">${exit.action?.icon||'⚠️'} ${exit.action?.label||'建議減碼'}</span>` : '<span style="color:#D1D5DB">—</span>';
+    const tags  = (entry||exit)?.tags?.map(t=>`<span class="tag">${t}</span>`).join('')||'';
+    return `<tr onclick="goStock('${code}','entry')">
+      <td><span class="rank">${i+1}</span></td>
+      <td><div class="stock-name">${name}</div><div class="stock-code">${code}</div></td>
+      <td class="r"><span class="price">${price}</span></td>
+      <td class="r">${chg}</td>
+      <td>${sig}</td>
+      <td>${act}</td>
+      <td><div class="tags">${tags}</div></td>
+      <td><button class="star-btn starred" data-code="${code}" onclick="toggleWatch('${code}','${name}',event)" title="取消追蹤">★</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('watchTbody').innerHTML = rows;
+}
+
+/* ══ 全市場掃描結果套用 ══ */
+function applyFullMarketResult(result) {
+  entryAllData = result.entry;
+  exitAllData  = result.exit;
+  applyFilters('entry');
+  applyFilters('exit');
+  const total    = result.total;
+  const scopeText = `分析範疇：TWSE 上市普通股 ${total} 檔（已排除 ETF、低流動性、低價股）｜資料深度：當日量價（開高低收量）｜評分依據：漲跌幅、收盤強度、成交動能`;
+  document.getElementById('entryModeDesc').textContent = `全市場 ${total} 檔掃描，依進場分數取前 50 名`;
+  document.getElementById('exitModeDesc').textContent  = `全市場 ${total} 檔掃描，依風險分數取前 50 名`;
+  document.getElementById('entryScopeText').textContent = scopeText;
+  document.getElementById('exitScopeText').textContent  = scopeText;
+  document.getElementById('entryScopeIcon').textContent = '🌐';
+  const eg = result.entry.filter(s=>s.sig==='green').length;
+  const ey = result.entry.filter(s=>s.sig==='yellow').length;
+  const er = result.exit.filter(s=>s.action?.cls==='urgent').length;
+  const eo = result.exit.filter(s=>s.action?.cls==='exit').length;
+  document.getElementById('entryCnt').textContent = result.entry.length + ' 檔';
+  document.getElementById('exitCnt').textContent  = result.exit.length  + ' 檔';
+  document.getElementById('nc-entry').textContent = eg + ey;
+  document.getElementById('nc-exit').textContent  = er + eo;
+  document.getElementById('entrySub').textContent = `🟢 ${eg} 可進場 ｜ 🟡 ${ey} 觀察中`;
+  document.getElementById('exitSub').textContent  = `🚨 ${er} 立即出場 ｜ ⛔ ${eo} 建議出場`;
+}
+
+async function rescanMarket(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 掃描中…'; }
+  try {
+    const result = await scanAllMarket(() => {});
+    applyFullMarketResult(result);
+    setSourceBadge('twse');
+    saveMarketCache(result);
+    toast(`重新掃描完成，共 ${result.total} 檔`);
+  } catch(e) {
+    toast('掃描失敗：' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 重掃'; }
+  }
+}
+
+/* ══ Source badge ══ */
+function setSourceBadge(src) {
+  const b = document.getElementById('srcBadge'), v = document.getElementById('srcVal');
+  if      (src === 'finmind') { b.className='source-badge finmind'; b.textContent='🟢 FinMind'; v.textContent='FinMind'; }
+  else if (src === 'twse')    { b.className='source-badge twse';    b.textContent='🔵 TWSE';    v.textContent='TWSE'; }
+  else                        { b.className='source-badge mock';    b.textContent='⚠️ 模擬資料'; v.textContent='模擬資料'; }
+  localStorage.setItem('last_source', src);
+}
+
+/* ══ Cache helpers ══ */
+const CACHE_KEY = 'tw_market_cache';
+
+function saveMarketCache(result) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({
+      entry: result.entry, exit: result.exit, total: result.total,
+      savedAt: new Date().toISOString()
+    }));
+  } catch(e) { console.warn('快取寫入失敗:', e); }
+}
+
+function loadMarketCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    if (!c?.entry?.length) return null;
+    return c;
+  } catch { return null; }
+}
+
+/* ══ Main load ══ */
+async function loadPage() {
+  const pad = n => String(n).padStart(2,'0');
+  const now = new Date();
+  const ts  = `${now.getFullYear()}/${pad(now.getMonth()+1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const ds  = ts.split(' ')[0];
+  document.getElementById('updateTime').textContent = `更新：${ts}`;
+  document.getElementById('entryDate').textContent  = ds + ' 更新';
+  document.getElementById('exitDate').textContent   = ds + ' 更新';
+  const h = now.getHours(), m = now.getMinutes();
+  // TWSE 交易時間 09:00–13:30（台灣時間 UTC+8）
+  document.getElementById('mktStatus').textContent =
+    (h > 9 || (h===9&&m>=0)) && (h < 13 || (h===13&&m<=30)) ? '盤中' : '收盤';
+
+  try {
+    // 嘗試取得 TWSE 即時全市場資料
+    document.getElementById('ldMsg').textContent = '📡 正在掃描全市場…';
+    document.getElementById('ldBar').style.width = '15%';
+    const result = await scanAllMarket((msg, pct) => {
+      document.getElementById('ldMsg').textContent = msg;
+      document.getElementById('ldBar').style.width = (15 + pct * 0.75) + '%';
+    });
+    applyFullMarketResult(result);
+    setSourceBadge('twse');
+    saveMarketCache(result);  // 成功後寫入快取
+  } catch(e) {
+    console.warn('TWSE 全市場掃描失敗:', e.message);
+    // 嘗試使用上次快取（上一個交易日資料）
+    const cache = loadMarketCache();
+    if (cache) {
+      const savedAt  = new Date(cache.savedAt);
+      const dateStr  = `${savedAt.getFullYear()}/${pad(savedAt.getMonth()+1)}/${pad(savedAt.getDate())}`;
+      const timeStr  = `${pad(savedAt.getHours())}:${pad(savedAt.getMinutes())}`;
+      applyFullMarketResult(cache);
+      setSourceBadge('twse');
+      // 覆寫範疇說明，標示為快取資料
+      const cacheNote = `使用快取資料（${dateStr} ${timeStr} 掃描）｜TWSE 每交易日 13:30 後更新｜${e.message}`;
+      document.getElementById('entryScopeText').textContent = cacheNote;
+      document.getElementById('exitScopeText').textContent  = cacheNote;
+      document.getElementById('entryScopeIcon').textContent = '💾';
+      document.getElementById('entryModeDesc').textContent  =
+        `全市場 ${cache.total} 檔掃描（快取 ${dateStr}）`;
+      document.getElementById('exitModeDesc').textContent   =
+        `全市場 ${cache.total} 檔掃描（快取 ${dateStr}）`;
+      setTimeout(() => toast(`💾 顯示 ${dateStr} 快取資料 — TWSE 更新於每交易日 13:30`), 400);
+    } else {
+      // 無快取 → 最後防線：模擬資料
+      setSourceBadge('mock');
+      entryAllData = MOCK_ENTRY;
+      exitAllData  = MOCK_EXIT;
+      applyFilters('entry');
+      applyFilters('exit');
+      const meg = MOCK_ENTRY.filter(s=>s.sig==='green').length, mey = MOCK_ENTRY.filter(s=>s.sig==='yellow').length;
+      const mer = MOCK_EXIT.filter(s=>s.action?.cls==='urgent').length, meo = MOCK_EXIT.filter(s=>s.action?.cls==='exit').length;
+      document.getElementById('entryCnt').textContent = (meg + mey) + ' 檔';
+      document.getElementById('exitCnt').textContent  = (mer + meo) + ' 檔';
+      document.getElementById('entrySub').textContent = `🟢 ${meg} 可進場 ｜ 🟡 ${mey} 觀察中`;
+      document.getElementById('exitSub').textContent  = `🚨 ${mer} 立即出場 ｜ ⛔ ${meo} 建議出場`;
+      document.getElementById('nc-entry').textContent = meg + mey;
+      document.getElementById('nc-exit').textContent  = mer + meo;
+      document.getElementById('entryModeDesc').textContent = '⚠️ 模擬資料（尚無快取）';
+      document.getElementById('exitModeDesc').textContent  = '⚠️ 模擬資料（尚無快取）';
+      const hint = `⚠️ ${e.message}｜首次使用請於交易日 13:30 後開啟，資料將自動快取供日後離線使用`;
+      document.getElementById('entryScopeText').textContent = hint;
+      document.getElementById('exitScopeText').textContent  = hint;
+      document.getElementById('entryScopeIcon').textContent = '⚠️';
+      setTimeout(() => toast('⚠️ 尚無快取資料，顯示模擬資料。請於交易日 13:30 後重試一次。'), 500);
+    }
+  }
+
+  document.getElementById('loadingOverlay').classList.add('hidden');
+  updateWatchCount();
+  initHistory();
+}
+
+/* ══ Compare ══ */
+const CMP_DATA = {
+  '2330':{ name:'台積電',  d1:'+2.10', d5:'+5.80', d20:'+12.30', d60:'+18.50', vol:92, ma20:true,  ma60:true,  trend:'bull' },
+  '2454':{ name:'聯發科',  d1:'-3.20', d5:'-7.10', d20:'-9.40',  d60:'-14.20', vol:48, ma20:false, ma60:false, trend:'bear' },
+  '2317':{ name:'鴻海',    d1:'+1.50', d5:'+3.20', d20:'+6.80',  d60:'+9.10',  vol:74, ma20:true,  ma60:true,  trend:'bull' },
+  '2382':{ name:'廣達',    d1:'+2.50', d5:'+6.30', d20:'+14.20', d60:'+22.50', vol:88, ma20:true,  ma60:true,  trend:'bull' },
+  '2308':{ name:'台達電',  d1:'+3.10', d5:'+7.40', d20:'+15.60', d60:'+24.30', vol:95, ma20:true,  ma60:true,  trend:'bull' },
+  '2303':{ name:'聯電',    d1:'+1.80', d5:'+4.10', d20:'+8.30',  d60:'+11.70', vol:76, ma20:true,  ma60:true,  trend:'bull' },
+  '3034':{ name:'聯詠',    d1:'+2.80', d5:'+6.50', d20:'+13.80', d60:'+20.40', vol:90, ma20:true,  ma60:true,  trend:'bull' },
+  '2379':{ name:'瑞昱',    d1:'+1.60', d5:'+3.80', d20:'+7.20',  d60:'+10.90', vol:78, ma20:true,  ma60:true,  trend:'bull' },
+  '3008':{ name:'大立光',  d1:'+1.70', d5:'+2.90', d20:'+5.10',  d60:'+7.80',  vol:62, ma20:true,  ma60:false, trend:'range' },
+  '2395':{ name:'研華',    d1:'+1.90', d5:'+4.60', d20:'+9.80',  d60:'+15.20', vol:82, ma20:true,  ma60:true,  trend:'bull' },
+  '3443':{ name:'創意',    d1:'+3.50', d5:'+9.20', d20:'+18.40', d60:'+28.60', vol:98, ma20:true,  ma60:true,  trend:'bull' },
+  '2881':{ name:'富邦金',  d1:'+2.30', d5:'+5.10', d20:'+10.40', d60:'+16.80', vol:85, ma20:true,  ma60:true,  trend:'bull' },
+  'TAIEX':{ name:'加權指數', d1:'+1.10', d5:'+2.60', d20:'+5.20', d60:'+8.40', vol:70, ma20:true, ma60:true, trend:'bull' },
+  'SEMI': { name:'半導體指數',d1:'+1.80', d5:'+4.30', d20:'+9.10', d60:'+14.60',vol:78, ma20:true, ma60:true, trend:'bull' },
+  'FIN':  { name:'金融類股', d1:'+0.70', d5:'+1.40', d20:'+3.20', d60:'+5.80', vol:55, ma20:true, ma60:false, trend:'range' },
+  'ELEC': { name:'電子類股', d1:'+1.50', d5:'+3.60', d20:'+7.80', d60:'+12.40',vol:72, ma20:true, ma60:true, trend:'bull' },
+  '0050': { name:'台灣50',  d1:'+1.20', d5:'+2.90', d20:'+6.10', d60:'+9.80', vol:68, ma20:true, ma60:true, trend:'bull' },
+  '0056': { name:'高股息',  d1:'+0.40', d5:'+0.80', d20:'+1.90', d60:'+3.50', vol:45, ma20:true, ma60:false, trend:'range' },
+  '00878':{ name:'國泰永續', d1:'+0.50', d5:'+1.10', d20:'+2.40', d60:'+4.20', vol:50, ma20:true, ma60:false, trend:'range' },
+  '00881':{ name:'5G+',     d1:'+0.90', d5:'+2.10', d20:'+4.50', d60:'+7.30', vol:60, ma20:true, ma60:true, trend:'bull' },
+};
+
+function runCompare() {
+  const ka = document.getElementById('selectA').value;
+  const kb = document.getElementById('selectB').value;
+  const a  = CMP_DATA[ka], b = CMP_DATA[kb];
+  if (!a || !b) return;
+  document.getElementById('legA').textContent = a.name;
+  document.getElementById('legB').textContent = b.name;
+  document.getElementById('phA').textContent  = a.name;
+  document.getElementById('phB').textContent  = b.name;
+  const periods = [
+    {label:'今日',  va:a.d1,  vb:b.d1},
+    {label:'近5日', va:a.d5,  vb:b.d5},
+    {label:'近20日',va:a.d20, vb:b.d20},
+    {label:'近60日',va:a.d60, vb:b.d60},
+  ];
+  document.getElementById('perfBody').innerHTML = periods.map(p => {
+    const diff = (parseFloat(p.va)-parseFloat(p.vb)).toFixed(2);
+    const cls  = diff >= 0 ? 'up' : 'down';
+    return `<tr><td>${p.label}</td><td class="col-a ${chgClass(p.va)}">${p.va}%</td><td class="col-b ${chgClass(p.vb)}">${p.vb}%</td><td class="${cls}">${diff>=0?'+':''}${diff}%</td></tr>`;
+  }).join('');
+  const strItems = [
+    {label:'5日強弱',  va:parseFloat(a.d5),  vb:parseFloat(b.d5)},
+    {label:'20日強弱', va:parseFloat(a.d20), vb:parseFloat(b.d20)},
+    {label:'60日強弱', va:parseFloat(a.d60), vb:parseFloat(b.d60)},
+  ];
+  document.getElementById('strGrid').innerHTML = strItems.map(it => {
+    const mx = Math.max(Math.abs(it.va), Math.abs(it.vb), 1);
+    const pA = Math.max(0, Math.min(100, it.va/mx*100));
+    const pB = Math.max(0, Math.min(100, it.vb/mx*100));
+    return `<div class="ind-card"><div class="ind-label">${it.label}</div>
+      <div class="ind-row"><div class="ind-name" style="color:#3B82F6">${a.name.slice(0,4)}</div><div class="ind-bar-wrap"><div class="ind-bar bar-a" style="width:${pA}%"></div></div><div class="ind-val ${it.va>=0?'up':'down'}">${it.va>=0?'+':''}${it.va.toFixed(1)}%</div></div>
+      <div class="ind-row"><div class="ind-name" style="color:#8B5CF6">${b.name.slice(0,4)}</div><div class="ind-bar-wrap"><div class="ind-bar bar-b" style="width:${pB}%"></div></div><div class="ind-val ${it.vb>=0?'up':'down'}">${it.vb>=0?'+':''}${it.vb.toFixed(1)}%</div></div>
+    </div>`;
+  }).join('');
+  document.getElementById('volGrid').innerHTML = [
+    {label:'量能強度', va:a.vol, vb:b.vol},
+    {label:'今日量能', va:Math.round(a.vol*1.1), vb:Math.round(b.vol*1.1)},
+    {label:'量 vs 均量',va:Math.round(a.vol*.9), vb:Math.round(b.vol*.9)},
+  ].map(it => `<div class="ind-card"><div class="ind-label">${it.label}</div>
+    <div class="ind-row"><div class="ind-name" style="color:#3B82F6">${a.name.slice(0,4)}</div><div class="ind-bar-wrap"><div class="ind-bar bar-a" style="width:${it.va}%"></div></div><div class="ind-val">${it.va}</div></div>
+    <div class="ind-row"><div class="ind-name" style="color:#8B5CF6">${b.name.slice(0,4)}</div><div class="ind-bar-wrap"><div class="ind-bar bar-b" style="width:${it.vb}%"></div></div><div class="ind-val">${it.vb}</div></div>
+  </div>`).join('');
+  const tl = t => t==='bull'?'偏多':t==='bear'?'偏空':'震盪';
+  const tc = t => t==='bull'?'bull':t==='bear'?'bear':'range';
+  const bc = (v,y,n) => v?`<span class="chip bull">${y}</span>`:`<span class="chip bear">${n}</span>`;
+  const aS = parseFloat(a.d20) > parseFloat(b.d20);
+  document.getElementById('trendGrid').innerHTML = `
+    <div class="trend-item"><span class="trend-label">趨勢狀態</span><span class="chip ${tc(a.trend)}">${tl(a.trend)}</span><span style="color:#D1D5DB">/</span><span class="chip ${tc(b.trend)}">${tl(b.trend)}</span></div>
+    <div class="trend-item"><span class="trend-label">站上 MA20</span>${bc(a.ma20,'是','否')}<span style="color:#D1D5DB">/</span>${bc(b.ma20,'是','否')}</div>
+    <div class="trend-item"><span class="trend-label">站上 MA60</span>${bc(a.ma60,'是','否')}<span style="color:#D1D5DB">/</span>${bc(b.ma60,'是','否')}</div>
+    <div class="trend-item"><span class="trend-label">個股強於 B</span>${aS?`<span class="chip bull">是 ▲${(parseFloat(a.d20)-parseFloat(b.d20)).toFixed(1)}%</span>`:`<span class="chip bear">否 ▼${(parseFloat(b.d20)-parseFloat(a.d20)).toFixed(1)}%</span>`}</div>`;
+  const aStr = parseFloat(a.d20) > parseFloat(b.d20);
+  const aVol = a.vol >= 75;
+  let txt = '';
+  if (aStr && aVol && a.trend==='bull')  txt = `${a.name}近20日表現強於${b.name}（+${(parseFloat(a.d20)-parseFloat(b.d20)).toFixed(1)}%），且量能放大、趨勢偏多，短線動能偏強。`;
+  else if (!aStr && a.trend==='bear')    txt = `${a.name}近20日表現弱於${b.name}（-${(parseFloat(b.d20)-parseFloat(a.d20)).toFixed(1)}%），趨勢偏空，目前不建議追蹤。`;
+  else if (aStr && !aVol)                txt = `${a.name}表現略強於${b.name}，但量能尚未明顯放大，建議觀察成交量放大後再確認。`;
+  else                                   txt = `${a.name}與${b.name}表現相近，趨勢${tl(a.trend)}，建議等待方向明朗後再操作。`;
+  document.getElementById('aiText').textContent = txt;
+  document.getElementById('cmpResult').classList.add('visible');
+}
+
+/* ══ History ══ */
+let histFilter = 'all';
+let histAllData = {};
+
+function setHistFilter(f, btn) {
+  histFilter = f;
+  document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderHistory();
+}
+
+function initHistory() {
+  const today = DataService.todayKey();
+  document.getElementById('histDate').value = today;
+  document.getElementById('histDate').addEventListener('change', renderHistory);
+  histAllData = DataService.getHistory();   // real data only
+  // Update history count badge
+  const days = Object.keys(histAllData).length;
+  document.getElementById('nc-hist').textContent = days > 0 ? days + '天' : '0天';
+  renderHistory();
+}
+
+function renderHistory() {
+  const dateVal  = document.getElementById('histDate').value;
+  const query    = document.getElementById('histSearch').value.trim().toLowerCase();
+  const tbody    = document.getElementById('histTbody');
+
+  // Collect all dates or just selected date
+  let dates = dateVal
+    ? [dateVal]
+    : Object.keys(histAllData).sort().reverse().slice(0, 7);
+
+  let rows = [];
+  for (const date of dates) {
+    const day = histAllData[date];
+    if (!day) continue;
+    if (histFilter !== 'exit') {
+      (day.entry || []).forEach(s => {
+        if (query && !s.name.includes(query) && !s.code.includes(query)) return;
+        rows.push({ date, type:'entry', ...s });
+      });
+    }
+    if (histFilter !== 'entry') {
+      (day.exit || []).forEach(s => {
+        if (query && !s.name.includes(query) && !s.code.includes(query)) return;
+        rows.push({ date, type:'exit', ...s });
+      });
+    }
+  }
+
+  if (rows.length === 0) {
+    const hasAnyData = Object.keys(histAllData).length > 0;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:#9CA3AF;font-size:13px">
+      ${hasAnyData ? '此日期查無紀錄' : '歷史紀錄尚未建立。每次載入首頁時，系統會自動將當日推薦存入紀錄。'}
+    </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const typePill = r.type === 'entry'
+      ? `<span style="background:#DCFCE7;color:#15803D;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">🔥 進場</span>`
+      : `<span style="background:#FFE4E6;color:#BE123C;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">⚠️ 出場</span>`;
+    const sigOrAct = r.type === 'entry'
+      ? `<span class="entry-sig ${r.sig||'yellow'}" style="font-size:11px"><span class="entry-sig-dot"></span>${sigLabel[r.sig||'yellow']}</span>`
+      : `<span class="exit-action ${(r.action||{}).cls||'reduce'}" style="font-size:11px">${(r.action||{}).icon||'⚠️'} ${(r.action||{}).label||'建議減碼'}</span>`;
+    const tags = (r.tags||[]).map(t=>`<span class="tag">${t}</span>`).join('');
+    const chg  = String(r.chg||'—');
+    return `<tr onclick="goStock('${r.code}','${r.type}')">
+      <td style="font-size:12px;color:#6B7280">${r.date}</td>
+      <td>${typePill}</td>
+      <td><div class="stock-name" style="font-size:13px">${r.name}</div><div class="stock-code">${r.code}</div></td>
+      <td class="r"><span class="price">${r.price ? '$'+r.price.toLocaleString() : '—'}</span></td>
+      <td class="r"><span class="${chgClass(chg)}">${chg}</span></td>
+      <td class="r">${r.support && r.pressure ? '<span class="price" style="font-size:11px">$'+r.support.toLocaleString()+' – $'+r.pressure.toLocaleString()+'</span>' : r.entryPrice ? '<span class="price">$'+r.entryPrice.toLocaleString()+'</span>' : '—'}</td>
+      <td class="r">${r.stopLoss ? '<span class="price">$'+r.stopLoss.toLocaleString()+' 以下</span>' : r.exitPrice ? '<span class="price">$'+r.exitPrice.toLocaleString()+'</span>' : '—'}</td>
+      <td>${sigOrAct}</td>
+      <td><div class="tags">${tags}</div></td>
+    </tr>`;
+  }).join('');
+}
+
+/* ══ Fallback Mock Data ══ */
+const MOCK_ENTRY = [
+  { name:'台積電', code:'2330', sector:'半導體',    sig:'green',  chg:'+2.10%', price:980,  score:84, support:940,  pressure:1020, tags:['放量突破','法人買超','均線轉強'] },
+  { name:'廣達',   code:'2382', sector:'電子製造',  sig:'green',  chg:'+2.50%', price:310,  score:85, support:295,  pressure:325,  tags:['AI題材','放量','法人買'] },
+  { name:'台達電', code:'2308', sector:'電子零組件', sig:'green', chg:'+3.10%', price:380,  score:88, support:360,  pressure:398,  tags:['突破高點','爆量','大買'] },
+  { name:'聯詠',   code:'3034', sector:'半導體',    sig:'green',  chg:'+2.80%', price:490,  score:87, support:465,  pressure:510,  tags:['爆量','突破','法人大買'] },
+  { name:'富邦金', code:'2881', sector:'金融',      sig:'green',  chg:'+2.30%', price:92,   score:86, support:87,   pressure:96,   tags:['放量突破','法人買超','強勢'] },
+  { name:'研華',   code:'2395', sector:'電子零組件', sig:'green', chg:'+1.90%', price:335,  score:83, support:318,  pressure:350,  tags:['放量','均線多排','外資買'] },
+  { name:'聯電',   code:'2303', sector:'半導體',    sig:'green',  chg:'+1.80%', price:58,   score:82, support:54,   pressure:61,   tags:['均線轉強','放量','外資買'] },
+  { name:'大立光', code:'3008', sector:'電子零組件', sig:'green', chg:'+1.70%', price:2680, score:81, support:2550, pressure:2780, tags:['放量','站上均線','外資回補'] },
+  { name:'矽力-KY',code:'6415', sector:'半導體',    sig:'yellow', chg:'+1.20%', price:870,  score:75, support:820,  pressure:910,  tags:['趨勢偏多','量能觀察','均線整理'] },
+  { name:'緯創',   code:'3231', sector:'電子製造',  sig:'yellow', chg:'+1.10%', price:52,   score:73, support:48,   pressure:55,   tags:['量能回升','趨勢轉多','觀察'] },
+  { name:'中信金', code:'2891', sector:'金融',      sig:'yellow', chg:'+0.80%', price:57,   score:70, support:54,   pressure:60,   tags:['站上MA20','訊號明確'] },
+  { name:'中華電', code:'2412', sector:'電信',      sig:'yellow', chg:'-0.50%', price:139,  score:67, support:132,  pressure:145,  tags:['量能放大','站上MA20'] },
+  { name:'台塑',   code:'1301', sector:'鋼鐵石化',  sig:'red',    chg:'-1.00%', price:78,   score:55, support:73,   pressure:82,   tags:['站上MA20','訊號明確'] },
+  { name:'裕隆',   code:'2201', sector:'汽車',      sig:'red',    chg:'+0.30%', price:42,   score:48, support:39,   pressure:45,   tags:['訊號弱','觀察'] },
+].map(s => ({ ...s, action: undefined }));
+
+const MOCK_EXIT = [
+  { name:'聯發科', code:'2454', sector:'半導體',   chg:'-3.20%', price:1280, score:78, stopLoss:1210, action:{icon:'🚨',label:'建議立即出場',cls:'urgent'}, tags:['跌破均線','轉弱','賣超'] },
+  { name:'台塑化', code:'6505', sector:'鋼鐵石化', chg:'-2.80%', price:88,   score:65, stopLoss:83,   action:{icon:'⛔',label:'建議出場',cls:'exit'},       tags:['爆量下跌','跌破均線','法人賣'] },
+  { name:'台塑',   code:'1301', sector:'鋼鐵石化', chg:'-2.10%', price:78,   score:62, stopLoss:74,   action:{icon:'⛔',label:'建議出場',cls:'exit'},       tags:['跌破MA20','爆量收黑','法人賣'] },
+  { name:'中鋼',   code:'2002', sector:'鋼鐵石化', chg:'-1.90%', price:28,   score:58, stopLoss:26,   action:{icon:'⛔',label:'建議出場',cls:'exit'},       tags:['跌破MA60','趨勢偏空','賣超'] },
+  { name:'廣達',   code:'2382', sector:'電子製造', chg:'-0.60%', price:290,  score:50, stopLoss:276,  action:{icon:'⚠️',label:'建議減碼',cls:'reduce'},     tags:['跌破MA20','動能轉弱'] },
+  { name:'仁寶',   code:'2324', sector:'電子製造', chg:'-0.70%', price:28,   score:48, stopLoss:26,   action:{icon:'⚠️',label:'建議減碼',cls:'reduce'},     tags:['跌破MA20','動能轉弱'] },
+];
+
+/* ══ 個股查詢 ══ */
+function entrySigClass(score) { return score >= 78 ? 'green' : score >= 65 ? 'yellow' : 'red'; }
+
+let _lkAcData = [], _lkAcIdx = -1, _lkDebounce;
+
+function onLookupInput() {
+  clearTimeout(_lkDebounce);
+  _lkDebounce = setTimeout(async () => {
+    const q = document.getElementById('lookupInput').value.trim();
+    if (q.length < 1) { closeAC(); return; }
+    const results = await DataService.searchStocks(q);
+    _lkAcData = results;
+    _lkAcIdx  = -1;
+    const ac = document.getElementById('lookupAC');
+    if (!results.length) { closeAC(); return; }
+    ac.innerHTML = results.map((s, i) =>
+      `<div class="lkac-item" data-i="${i}" onmousedown="selectAC(${i})">
+        <span class="lkac-code">${s.code}</span>
+        <span class="lkac-name">${s.name}</span>
+      </div>`
+    ).join('');
+    ac.classList.add('open');
+  }, 250);
+}
+
+function onLookupKey(e) {
+  const ac = document.getElementById('lookupAC');
+  const items = ac.querySelectorAll('.lkac-item');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _lkAcIdx = Math.min(_lkAcIdx + 1, items.length - 1);
+    items.forEach((el, i) => el.classList.toggle('focused', i === _lkAcIdx));
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _lkAcIdx = Math.max(_lkAcIdx - 1, -1);
+    items.forEach((el, i) => el.classList.toggle('focused', i === _lkAcIdx));
+  } else if (e.key === 'Enter') {
+    if (_lkAcIdx >= 0 && _lkAcData[_lkAcIdx]) {
+      selectAC(_lkAcIdx);
+    } else {
+      analyzeStock();
+    }
+  } else if (e.key === 'Escape') {
+    closeAC();
+  }
+}
+
+function selectAC(i) {
+  const s = _lkAcData[i];
+  if (!s) return;
+  document.getElementById('lookupInput').value = `${s.code} ${s.name}`;
+  closeAC();
+  analyzeStock(s.code);
+}
+
+function closeAC() {
+  document.getElementById('lookupAC').classList.remove('open');
+}
+
+function quickLookup(code, name) {
+  document.getElementById('lookupInput').value = `${code} ${name}`;
+  analyzeStock(code);
+}
+
+async function analyzeStock(forceCode) {
+  closeAC();
+  const raw = document.getElementById('lookupInput').value.trim();
+  if (!raw && !forceCode) return;
+
+  // Resolve: if not a 4-digit code, search for the name first
+  let code = forceCode;
+  if (!code) {
+    const firstWord = raw.split(/\s/)[0];
+    if (/^\d{4,}$/.test(firstWord)) {
+      code = firstWord;
+    } else {
+      // Name input — resolve via search before loading
+      const matches = await DataService.searchStocks(raw);
+      if (matches.length > 0) {
+        code = matches[0].code;
+        document.getElementById('lookupInput').value = `${code} ${matches[0].name}`;
+      } else {
+        const errEl = document.getElementById('lookupError');
+        errEl.textContent = `找不到「${raw}」，請嘗試直接輸入股票代號（例：3481）`;
+        errEl.classList.remove('hidden');
+        document.getElementById('lookupEmpty').classList.remove('hidden');
+        return;
+      }
+    }
+  }
+
+  document.getElementById('lookupEmpty').classList.add('hidden');
+  document.getElementById('lookupResult').classList.add('hidden');
+  document.getElementById('lookupError').classList.add('hidden');
+  document.getElementById('lookupLoading').classList.remove('hidden');
+
+  try {
+    const data = await DataService.loadStockAnalysis(code);
+    document.getElementById('lookupLoading').classList.add('hidden');
+
+    if (!data.ok) {
+      const errEl = document.getElementById('lookupError');
+      errEl.textContent = data.error || '查詢失敗，請確認股票代號是否正確';
+      errEl.classList.remove('hidden');
+      document.getElementById('lookupEmpty').classList.remove('hidden');
+      return;
+    }
+
+    renderLookupResult(data);
+  } catch(e) {
+    document.getElementById('lookupLoading').classList.add('hidden');
+    const errEl = document.getElementById('lookupError');
+    errEl.textContent = '查詢失敗：' + (e.message || '請稍後再試');
+    errEl.classList.remove('hidden');
+    document.getElementById('lookupEmpty').classList.remove('hidden');
+  }
+}
+
+function renderLookupResult(d) {
+  const chgPct  = d.changePct ?? 0;
+  const chgSign = chgPct >= 0 ? '+' : '';
+  const chgCls  = chgPct > 0 ? 'up' : chgPct < 0 ? 'down' : 'flat';
+
+  document.getElementById('lkName').textContent  = d.name;
+  document.getElementById('lkCode').textContent  = d.code;
+  const lkStar = document.getElementById('lkStarBtn');
+  lkStar.dataset.code = d.code;
+  lkStar.dataset.name = d.name;
+  const lkWatched = isWatched(d.code);
+  lkStar.textContent = lkWatched ? '★' : '☆';
+  lkStar.classList.toggle('starred', lkWatched);
+  document.getElementById('lkPrice').textContent = d.close ? `$${d.close.toLocaleString()}` : '—';
+  const chgEl = document.getElementById('lkChg');
+  chgEl.textContent  = d.close ? `${chgSign}${chgPct.toFixed(2)}%` : '—';
+  chgEl.className    = 'lookup-chg ' + chgCls;
+
+  // Entry card
+  const eCls = entrySigClass(d.entry.score);
+  document.getElementById('lkEntrySig').className   = `entry-sig ${eCls}`;
+  document.getElementById('lkEntrySig').innerHTML   =
+    `<span class="entry-sig-dot"></span>${sigLabel[eCls]}`;
+  const entryScoreEl = document.getElementById('lkEntryScore');
+  entryScoreEl.textContent = d.entry.score;
+  entryScoreEl.className   = 'lk-score-num ' + (d.entry.score >= 80 ? 'tw-up' : d.entry.score >= 65 ? '' : 'tw-down');
+  document.getElementById('lkEntryRange').textContent =
+    d.entry.support && d.entry.pressure
+      ? `$${d.entry.support.toLocaleString()} — $${d.entry.pressure.toLocaleString()}`
+      : '資料不足';
+  document.getElementById('lkEntryTags').innerHTML =
+    d.entry.tags.map(t => `<span class="tag">${t}</span>`).join('');
+  document.getElementById('lkEntryReasons').innerHTML =
+    d.entry.reasons.map(r => `<div class="lk-reason-item">${r}</div>`).join('');
+
+  // Exit card
+  const act = d.exit.action;
+  document.getElementById('lkExitAction').className   = `exit-action ${act.cls}`;
+  document.getElementById('lkExitAction').textContent = `${act.icon} ${act.label}`;
+  document.getElementById('lkExitScore').textContent  = d.exit.score;
+  document.getElementById('lkStopLoss').textContent   =
+    d.exit.stopLoss ? `$${d.exit.stopLoss.toLocaleString()} 以下` : '—';
+  document.getElementById('lkExitTags').innerHTML =
+    d.exit.tags.map(t => `<span class="tag">${t}</span>`).join('');
+  document.getElementById('lkExitReasons').innerHTML =
+    d.exit.reasons.map(r => `<div class="lk-reason-item">${r}</div>`).join('');
+
+  // Indicators
+  const ma = d.ma || {};
+  document.getElementById('lkMA5').textContent  = ma.ma5  ? `$${ma.ma5.toLocaleString()}`  : '—';
+  document.getElementById('lkMA20').textContent = ma.ma20 ? `$${ma.ma20.toLocaleString()}` : '—';
+  document.getElementById('lkMA60').textContent = ma.ma60 ? `$${ma.ma60.toLocaleString()}` : '—';
+  const vrEl = document.getElementById('lkVR');
+  vrEl.textContent = d.vr ? `${d.vr}x` : '—';
+  vrEl.style.color = d.vr >= 2 ? '#DC2626' : d.vr >= 1.5 ? '#92400E' : '#111827';
+  const fNet = d.instNet?.foreign ?? 0;
+  const tNet = d.instNet?.trust   ?? 0;
+  const fEl  = document.getElementById('lkFNet');
+  const tEl  = document.getElementById('lkTNet');
+  fEl.textContent = fNet === 0 ? '—' : (fNet > 0 ? '+' : '') + fNet.toLocaleString() + '張';
+  fEl.style.color = fNet > 0 ? '#DC2626' : fNet < 0 ? '#16A34A' : '#111827';
+  tEl.textContent = tNet === 0 ? '—' : (tNet > 0 ? '+' : '') + tNet.toLocaleString() + '張';
+  tEl.style.color = tNet > 0 ? '#DC2626' : tNet < 0 ? '#16A34A' : '#111827';
+
+  document.getElementById('lookupResult').classList.remove('hidden');
+}
+
+/* ══ Firebase Auth ══ */
+let _fbAuth = null;
+
+function initFirebase() {
+  try {
+    const cfg = JSON.parse(localStorage.getItem('firebase_config') || 'null');
+    if (!cfg || !cfg.apiKey) { renderAuthUI(null, false); return; }
+    if (!firebase.apps.length) firebase.initializeApp(cfg);
+    const db  = firebase.firestore();
+    _fbAuth   = firebase.auth();
+    DataService.initFirebaseService(db);
+    _fbAuth.onAuthStateChanged(async user => {
+      DataService.setFirebaseUser(user);
+      renderAuthUI(user, true);
+      if (user) {
+        // Reload history from cloud
+        const cloud = await DataService.cloudLoadHistory();
+        if (cloud && Object.keys(cloud).length > 0) {
+          histAllData = cloud;
+          const days = Object.keys(histAllData).length;
+          document.getElementById('nc-hist').textContent = days + '天';
+          renderHistory();
+        }
+      }
+    });
+  } catch(e) {
+    console.warn('Firebase init failed:', e.message);
+    renderAuthUI(null, false);
+  }
+}
+
+function renderAuthUI(user, firebaseReady) {
+  const wrap = document.getElementById('authWrap');
+  if (!wrap) return;
+  if (!firebaseReady) {
+    // No Firebase config — show small setup hint
+    wrap.innerHTML = `<a class="settings-btn" href="settings.html" title="設定 Firebase 以啟用雲端記錄">☁️ 雲端同步</a>`;
+    return;
+  }
+  if (user) {
+    const name  = (user.displayName || user.email || '使用者').split(' ')[0];
+    const photo = user.photoURL
+      ? `<img src="${user.photoURL}" class="auth-avatar" referrerpolicy="no-referrer">`
+      : '<span style="font-size:16px">👤</span>';
+    wrap.innerHTML = `
+      <div class="auth-pill">
+        ${photo}
+        <span class="auth-name">${name}</span>
+        <button class="auth-logout" onclick="fbSignOut()">登出</button>
+      </div>`;
+  } else {
+    wrap.innerHTML = `<button class="auth-login-btn" onclick="fbSignIn()">☁️ Google 登入</button>`;
+  }
+}
+
+async function fbSignIn() {
+  if (!_fbAuth) { alert('請先在「設定」頁面填入 Firebase 設定碼'); return; }
+  try { await _fbAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }
+  catch(e) { console.error('Sign-in failed:', e.message); }
+}
+
+async function fbSignOut() {
+  if (_fbAuth) await _fbAuth.signOut();
+  histAllData = DataService.getHistory();
+  const days  = Object.keys(histAllData).length;
+  document.getElementById('nc-hist').textContent = days > 0 ? days + '天' : '0天';
+  renderHistory();
+}
+
+initFirebase();
+loadPage();
+</script>
+</body>
+</html>

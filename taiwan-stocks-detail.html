@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>個股健檢 — 台股雷達</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang TC', 'Microsoft JhengHei', 'Segoe UI', sans-serif;
+      background: #F0F2F5; color: #111827; min-height: 100vh;
+    }
+
+    /* ══ Header ══ */
+    header {
+      position: sticky; top: 0; z-index: 100; background: #fff;
+      border-bottom: 1px solid #E5E7EB; height: 60px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 32px; box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .logo-mark {
+      width: 34px; height: 34px; border-radius: 9px;
+      background: linear-gradient(135deg,#1B4FD8,#3B82F6);
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-weight: 800; font-size: 14px;
+    }
+    .logo-name { font-size: 17px; font-weight: 700; color: #111827; }
+    .logo-name span { color: #1B4FD8; }
+    .back-btn {
+      display: flex; align-items: center; gap: 6px; font-size: 13px;
+      color: #6B7280; text-decoration: none; font-weight: 600;
+      padding: 6px 12px; border-radius: 8px; transition: background .15s;
+    }
+    .back-btn:hover { background: #F3F4F6; color: #111827; }
+
+    /* ══ Loading ══ */
+    #loadingOverlay {
+      position: fixed; inset: 0; z-index: 200; background: rgba(240,242,245,.94);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    }
+    #loadingOverlay.hidden { display: none; }
+    .spinner {
+      width: 38px; height: 38px; border: 3px solid #E5E7EB;
+      border-top-color: #1B4FD8; border-radius: 50%; animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-title { font-size: 15px; font-weight: 700; }
+    .loading-sub   { font-size: 13px; color: #6B7280; }
+
+    /* ══ Layout ══ */
+    .wrap { max-width: 960px; margin: 0 auto; padding: 28px 24px 52px; }
+
+    /* ══ Hero ══ */
+    .hero {
+      background: #fff; border: 1px solid #E5E7EB; border-radius: 16px;
+      padding: 22px 28px; margin-bottom: 16px;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+    }
+    .hero-left  { display: flex; align-items: center; gap: 16px; }
+    .hero-avatar {
+      width: 52px; height: 52px; border-radius: 14px;
+      background: linear-gradient(135deg,#1B4FD8,#3B82F6);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 800; color: #fff; flex-shrink: 0;
+    }
+    .hero-name   { font-size: 22px; font-weight: 800; }
+    .hero-meta   { font-size: 13px; color: #9CA3AF; margin-top: 3px; display: flex; gap: 10px; align-items: center; }
+    .hero-right  { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .hero-price  { font-size: 30px; font-weight: 800; }
+    .hero-change { font-size: 15px; font-weight: 700; margin-top: 3px; }
+    .tw-up   { color: #DC2626; }
+    .tw-down { color: #16A34A; }
+    .flat    { color: #6B7280; }
+    .hero-badges { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+
+    .sig {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700;
+    }
+    .sig-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .sig.green  { background: #F0FDF4; color: #15803D; } .sig.green  .sig-dot { background: #22C55E; }
+    .sig.yellow { background: #FFFBEB; color: #92400E; } .sig.yellow .sig-dot { background: #F59E0B; }
+    .sig.red    { background: #FFF1F2; color: #9F1239; } .sig.red    .sig-dot { background: #F43F5E; }
+    .type-badge { padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .type-badge.entry { background: #DCFCE7; color: #15803D; }
+    .type-badge.exit  { background: #FFE4E6; color: #9F1239; }
+
+    /* ══ MA bar ══ */
+    .ma-bar {
+      background: #fff; border: 1px solid #E5E7EB; border-radius: 12px;
+      padding: 14px 22px; margin-bottom: 16px;
+      display: flex; gap: 0; flex-wrap: wrap;
+    }
+    .ma-item {
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      flex: 1; min-width: 90px; padding: 6px 10px; border-radius: 8px;
+    }
+    .ma-label { font-size: 11px; color: #9CA3AF; font-weight: 600; }
+    .ma-val   { font-size: 15px; font-weight: 800; color: #111827; }
+    .ma-item.above .ma-val { color: #DC2626; }
+    .ma-item.below .ma-val { color: #16A34A; }
+    .ma-item.above { background: #FFF5F5; }
+    .ma-item.below { background: #F0FDF4; }
+    .ma-status { font-size: 10px; font-weight: 700; }
+    .ma-item.above .ma-status { color: #DC2626; }
+    .ma-item.below .ma-status { color: #16A34A; }
+
+    /* ══ Price Cards ══ */
+    .price-cards { display: grid; grid-template-columns: repeat(6,1fr); gap: 12px; margin-bottom: 16px; }
+    .pc {
+      background: #fff; border: 1px solid #E5E7EB; border-radius: 12px;
+      padding: 14px 16px; text-align: center;
+    }
+    .pc-label { font-size: 11px; color: #9CA3AF; font-weight: 600; margin-bottom: 6px; }
+    .pc-val   { font-size: 18px; font-weight: 800; color: #111827; }
+    .pc.hl    { border-color: #1B4FD8; background: #EFF6FF; }
+    .pc.hl .pc-val { color: #1B4FD8; }
+    .pc.danger{ border-color: #F43F5E; background: #FFF1F2; }
+    .pc.danger .pc-val { color: #BE123C; }
+    .pc.current { border-color: #6B7280; background: #F9FAFB; }
+    .pc.current .pc-val { color: #111827; }
+
+    /* ══ Section ══ */
+    .section { background: #fff; border: 1px solid #E5E7EB; border-radius: 16px; overflow: hidden; margin-bottom: 16px; }
+    .section-head { padding: 15px 24px; border-bottom: 1px solid #F3F4F6; display: flex; align-items: center; gap: 10px; }
+    .section-icon { font-size: 18px; }
+    .section-head h3 { font-size: 15px; font-weight: 700; }
+    .section-body { padding: 20px 24px; }
+
+    /* Summary */
+    .summary-box {
+      background: linear-gradient(135deg,#EFF6FF,#F5F3FF);
+      border: 1px solid #BFDBFE; border-radius: 12px;
+      padding: 16px 20px; display: flex; gap: 12px;
+    }
+    .summary-icon { font-size: 20px; flex-shrink: 0; margin-top: 2px; }
+    .summary-text { font-size: 14px; line-height: 1.85; color: #1E40AF; font-weight: 500; }
+
+    /* Score bars */
+    .score-list { display: flex; flex-direction: column; gap: 14px; }
+    .score-item { display: flex; flex-direction: column; gap: 5px; }
+    .score-row  { display: flex; align-items: center; justify-content: space-between; }
+    .score-lbl  { font-size: 13px; font-weight: 600; color: #374151; }
+    .score-num  { font-size: 13px; font-weight: 700; color: #6B7280; }
+    .bar-wrap   { height: 7px; background: #F3F4F6; border-radius: 4px; overflow: hidden; }
+    .bar        { height: 100%; border-radius: 4px; transition: width .5s ease; }
+    .c-green  { background: linear-gradient(90deg,#22C55E,#16A34A); }
+    .c-blue   { background: linear-gradient(90deg,#3B82F6,#1B4FD8); }
+    .c-purple { background: linear-gradient(90deg,#8B5CF6,#7C3AED); }
+    .c-orange { background: linear-gradient(90deg,#F97316,#EA580C); }
+    .c-red    { background: linear-gradient(90deg,#F43F5E,#BE123C); }
+    .score-total {
+      margin-top: 6px; padding-top: 14px; border-top: 2px dashed #E5E7EB;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .score-total-lbl { font-size: 14px; font-weight: 700; }
+    .score-total-val { font-size: 26px; font-weight: 800; }
+    .deduct-note     { font-size: 12px; color: #EF4444; margin-top: 2px; text-align: right; }
+
+    /* Reasons */
+    .reason-list { display: flex; flex-direction: column; gap: 8px; }
+    .reason-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 14px; border-radius: 8px; background: #F9FAFB;
+      border-left: 3px solid transparent;
+    }
+    .reason-item.entry { border-color: #22C55E; }
+    .reason-item.exit  { border-color: #F43F5E; }
+    .reason-ic   { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+    .reason-text { font-size: 13.5px; color: #374151; line-height: 1.55; }
+
+    /* ══ Price Chart ══ */
+    .chart-wrap { padding: 0 24px 20px; }
+    .chart-svg-box { width: 100%; border-radius: 10px; overflow: hidden; }
+    .chart-top { display: flex; align-items: center; justify-content: space-between; padding-top: 4px; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+    .chart-legend { display: flex; gap: 16px; font-size: 12px; color: #6B7280; align-items: center; }
+    .chart-legend-item { display: flex; align-items: center; gap: 5px; font-weight: 600; }
+    .chart-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .chart-periods { display: flex; gap: 4px; }
+    .chart-period-btn {
+      padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;
+      border: 1px solid #E5E7EB; background: #F9FAFB; color: #6B7280;
+      cursor: pointer; font-family: inherit; transition: all .15s;
+    }
+    .chart-period-btn.active { background: #1B4FD8; color: #fff; border-color: #1B4FD8; }
+    .chart-note { font-size: 11px; color: #9CA3AF; margin-top: 8px; }
+
+    /* Source badge */
+    .src-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    }
+    .src-badge.finmind { background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; }
+    .src-badge.twse    { background: #EFF6FF; color: #1B4FD8; border: 1px solid #BFDBFE; }
+    .src-badge.mock    { background: #FFFBEB; color: #92400E; border: 1px solid #FDE68A; }
+
+    /* Disclaimer */
+    .disclaimer { display: flex; gap: 10px; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px; padding: 14px 18px; }
+    .disclaimer p { font-size: 12px; color: #78350F; line-height: 1.7; }
+    .disclaimer strong { font-weight: 700; }
+
+    /* Responsive */
+    @media (max-width: 860px) {
+      .price-cards { grid-template-columns: repeat(3,1fr); }
+    }
+    @media (max-width: 720px) {
+      .hero { flex-direction: column; align-items: flex-start; }
+      .hero-right { width: 100%; }
+      .ma-bar { gap: 4px; }
+    }
+    @media (max-width: 480px) {
+      .wrap { padding: 14px 12px 40px; }
+      header { padding: 0 16px; }
+      .price-cards { grid-template-columns: repeat(2,1fr); }
+      .section-body { padding: 14px 16px; }
+      .chart-wrap { padding: 0 14px 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="loading-title" id="loadingTitle">載入個股資料…</div>
+  <div class="loading-sub"   id="loadingSub">請稍候</div>
+</div>
+
+<!-- Header -->
+<header>
+  <a class="logo" href="taiwan-stocks-dashboard.html">
+    <div class="logo-mark">台</div>
+    <div class="logo-name">台股<span>雷達</span></div>
+  </a>
+  <a class="back-btn" href="taiwan-stocks-dashboard.html">← 返回首頁</a>
+</header>
+
+<div class="wrap">
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-left">
+      <div class="hero-avatar" id="heroAvatar">—</div>
+      <div>
+        <div class="hero-name" id="heroName">—</div>
+        <div class="hero-meta">
+          <span id="heroCode">—</span>
+          <span class="src-badge mock" id="srcBadge">⚠️ 模擬</span>
+        </div>
+      </div>
+    </div>
+    <div class="hero-right">
+      <div>
+        <div class="hero-price" id="heroPrice">—</div>
+        <div class="hero-change" id="heroChange">—</div>
+      </div>
+      <div class="hero-badges">
+        <span class="sig yellow" id="heroSig"><span class="sig-dot"></span><span id="heroSigTxt">—</span></span>
+        <span class="type-badge entry" id="typeBadge">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MA bar -->
+  <div class="ma-bar" id="maBar"></div>
+
+  <!-- Price Cards -->
+  <div class="price-cards" id="priceCards"></div>
+
+  <!-- Summary -->
+  <div class="section">
+    <div class="section-head"><span class="section-icon">💡</span><h3>系統判斷摘要</h3></div>
+    <div class="section-body">
+      <div class="summary-box">
+        <span class="summary-icon">🤖</span>
+        <p class="summary-text" id="summaryText">—</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Score -->
+  <div class="section">
+    <div class="section-head"><span class="section-icon">📊</span><h3 id="scoreTitle">評分明細</h3></div>
+    <div class="section-body"><div class="score-list" id="scoreList"></div></div>
+  </div>
+
+  <!-- Reasons -->
+  <div class="section">
+    <div class="section-head"><span class="section-icon">📋</span><h3 id="reasonTitle">關鍵理由</h3></div>
+    <div class="section-body"><div class="reason-list" id="reasonList"></div></div>
+  </div>
+
+  <!-- Price Chart -->
+  <div class="section">
+    <div class="section-head"><span class="section-icon">📈</span><h3>準確度追蹤</h3></div>
+    <div class="chart-wrap">
+      <div class="chart-top">
+        <div class="chart-legend">
+          <span class="chart-legend-item"><span class="chart-dot" style="background:#1B4FD8"></span>收盤價走勢</span>
+          <span class="chart-legend-item"><span class="chart-dot" style="background:#22C55E"></span>進場點</span>
+          <span class="chart-legend-item"><span class="chart-dot" style="background:#F43F5E"></span>出場點</span>
+        </div>
+        <div class="chart-periods">
+          <button class="chart-period-btn" onclick="setChartPeriod(7,this)">週</button>
+          <button class="chart-period-btn active" onclick="setChartPeriod(30,this)">月</button>
+          <button class="chart-period-btn" onclick="setChartPeriod(90,this)">季</button>
+          <button class="chart-period-btn" onclick="setChartPeriod(252,this)">年</button>
+        </div>
+      </div>
+      <div class="chart-svg-box" id="priceChart"></div>
+      <div class="chart-note" id="chartNote">＊圖表以最近30個交易日收盤價繪製，信號點標示今日系統推薦位置。歷史信號為模擬數據。</div>
+    </div>
+  </div>
+
+  <!-- Disclaimer -->
+  <div class="disclaimer">
+    <span style="font-size:15px;flex-shrink:0;margin-top:1px">⚠️</span>
+    <p><strong>免責聲明：</strong>本頁面資訊僅供研究參考，不構成投資建議或獲利保證。歷史命中率為模擬數據，不代表未來績效。股票投資具有風險，請自行判斷。</p>
+  </div>
+
+</div>
+
+<script src="data-service.js"></script>
+<script>
+/* ═══════════════════════════════════════
+   Price chart
+═══════════════════════════════════════ */
+let currentStockData = null;
+let currentCode = '';
+let currentType = '';
+let currentChartPeriod = 30;
+
+function seededRng(seed) {
+  return s => { let x = Math.sin(seed + s) * 10000; return x - Math.floor(x); };
+}
+
+function mockPriceHistory(baseClose, code, tradingDays) {
+  if (!baseClose || baseClose === 0) baseClose = 100;
+  tradingDays = tradingDays || 30;
+  const rng = seededRng(code.split('').reduce((a,c) => a + c.charCodeAt(0), 0));
+  const calDays = Math.ceil(tradingDays * 1.45); // extra calendar days to get enough trading days
+  const result = [];
+  let price = baseClose * (0.88 + rng(0) * 0.24);
+  const today = new Date();
+  for (let i = calDays - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    if (d.getDay() === 0 || d.getDay() === 6) continue;
+    const delta = (rng(i * 7) - 0.47) * price * 0.022;
+    price = Math.max(price + delta, baseClose * 0.60);
+    result.push({ date: d.toISOString().slice(0,10), close: +price.toFixed(1) });
+    if (result.length >= tradingDays) break;
+  }
+  if (result.length) result[result.length - 1].close = baseClose;
+  return result;
+}
+
+function setChartPeriod(days, btn) {
+  currentChartPeriod = days;
+  document.querySelectorAll('.chart-period-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (currentStockData) {
+    renderPriceChart(currentStockData.priceHistory || [], currentStockData.close, currentType, currentCode, days);
+  }
+}
+
+function mockSignalPoints(priceData, code, type) {
+  const rng = seededRng(code.split('').reduce((a,c) => a + c.charCodeAt(0), 42));
+  const n = priceData.length;
+  const signals = [];
+  // 1–2 historical signal points
+  const count = 1 + Math.round(rng(99) * 1);
+  const used = new Set([n - 1]);
+  for (let k = 0; k < count; k++) {
+    let idx = Math.floor(rng(k * 13 + 5) * (n - 3)) + 1;
+    if (used.has(idx)) idx = Math.max(1, idx - 2);
+    used.add(idx);
+    signals.push({ idx, type: k % 2 === 0 ? 'entry' : 'exit' });
+  }
+  // Today's signal
+  signals.push({ idx: n - 1, type });
+  return signals;
+}
+
+function renderPriceChart(priceHistory, close, type, code, period) {
+  period = period || 30;
+  const container = document.getElementById('priceChart');
+  // Slice real data to requested period, or generate mock for that period
+  const realSlice = priceHistory && priceHistory.length >= 5 ? priceHistory.slice(-period) : null;
+  const data = realSlice && realSlice.length >= 3 ? realSlice : mockPriceHistory(close, code, period);
+  const periodLabel = period === 7 ? '5個交易日' : period === 30 ? '30個交易日' : period === 90 ? '一季' : '一年';
+  const closes = data.map(d => d.close);
+  const n = closes.length;
+  if (n < 2) { container.innerHTML = '<p style="color:#9CA3AF;text-align:center;padding:20px">資料不足</p>'; return; }
+
+  const minP = Math.min(...closes);
+  const maxP = Math.max(...closes);
+  const range = maxP - minP || 1;
+
+  const W = 760, H = 160;
+  const pad = { t: 20, b: 28, l: 54, r: 20 };
+  const iW = W - pad.l - pad.r;
+  const iH = H - pad.t - pad.b;
+
+  const px = i => pad.l + (i / (n - 1)) * iW;
+  const py = v => pad.t + (1 - (v - minP) / range) * iH;
+
+  // Line path
+  const linePts = closes.map((c, i) => `${i === 0 ? 'M' : 'L'}${px(i).toFixed(1)},${py(c).toFixed(1)}`).join(' ');
+  // Area fill
+  const areaPath = `${linePts} L${px(n-1).toFixed(1)},${(pad.t+iH).toFixed(1)} L${pad.l},${(pad.t+iH).toFixed(1)} Z`;
+
+  // Signal dots
+  const signals = mockSignalPoints(data, code, type);
+  const dotsSVG = signals.map(s => {
+    const cx = px(s.idx).toFixed(1);
+    const cy = py(closes[s.idx]).toFixed(1);
+    const fill = s.type === 'entry' ? '#22C55E' : '#F43F5E';
+    const isToday = s.idx === n - 1;
+    return `<circle cx="${cx}" cy="${cy}" r="${isToday ? 7 : 5}" fill="${fill}" stroke="#fff" stroke-width="2"/>
+            ${isToday ? `<text x="${cx}" y="${(+cy - 13).toFixed(1)}" text-anchor="middle" font-size="10" fill="${fill}" font-weight="700">今日</text>` : ''}`;
+  }).join('\n');
+
+  // Y-axis labels (3 levels)
+  const yLevels = [minP, (minP+maxP)/2, maxP];
+  const yLabels = yLevels.map(v =>
+    `<text x="${pad.l - 6}" y="${(py(v) + 3.5).toFixed(1)}" text-anchor="end" font-size="10" fill="#9CA3AF">${v.toFixed(0)}</text>
+     <line x1="${pad.l}" y1="${py(v).toFixed(1)}" x2="${(pad.l + iW).toFixed(1)}" y2="${py(v).toFixed(1)}" stroke="#F3F4F6" stroke-width="1"/>`
+  ).join('\n');
+
+  // X-axis: first, middle, last date labels
+  const xLabelIdxs = [0, Math.floor(n/2), n-1];
+  const xLabels = xLabelIdxs.map(i => {
+    const dateStr = (data[i]?.date || '').slice(5).replace('-','/');
+    return `<text x="${px(i).toFixed(1)}" y="${(pad.t + iH + 14).toFixed(1)}" text-anchor="middle" font-size="10" fill="#9CA3AF">${dateStr}</text>`;
+  }).join('\n');
+
+  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
+    <defs>
+      <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#3B82F6" stop-opacity="0.15"/>
+        <stop offset="100%" stop-color="#3B82F6" stop-opacity="0.02"/>
+      </linearGradient>
+    </defs>
+    ${yLabels}
+    ${xLabels}
+    <path d="${areaPath}" fill="url(#areaGrad)"/>
+    <path d="${linePts}" fill="none" stroke="#1B4FD8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    ${dotsSVG}
+  </svg>`;
+
+  // Update note
+  const isReal = realSlice && realSlice.length >= 3;
+  document.getElementById('chartNote').textContent = isReal
+    ? `＊圖表以最近 ${data.length} 個交易日實際收盤價繪製，今日信號點標示系統推薦位置。`
+    : `＊圖表以模擬收盤價繪製（${periodLabel}），信號點標示今日系統推薦位置。`;
+}
+
+/* ═══════════════════════════════════════
+   Render helpers
+═══════════════════════════════════════ */
+const sigLabel = { green:'綠燈', yellow:'黃燈', red:'紅燈' };
+
+function fmtPrice(p) { return p ? '$' + p.toLocaleString() : '—'; }
+function chgClass(n) { return n > 0 ? 'tw-up' : n < 0 ? 'tw-down' : 'flat'; }
+
+function renderMABar(ma, close) {
+  const items = [
+    { label:'現價',   val: close,   ref: null   },
+    { label:'MA5',   val: ma.ma5,  ref: close  },
+    { label:'MA20',  val: ma.ma20, ref: close  },
+    { label:'MA60',  val: ma.ma60, ref: close  },
+  ].filter(i => i.val && i.val > 0);
+
+  document.getElementById('maBar').innerHTML = items.map(item => {
+    const isPrice = !item.ref;
+    const above   = item.ref && close > item.val;
+    const cls     = isPrice ? '' : above ? 'above' : 'below';
+    const status  = isPrice ? '' : above ? '▲ 站上' : '▼ 跌破';
+    return `<div class="ma-item ${cls}">
+      <div class="ma-label">${item.label}</div>
+      <div class="ma-val">$${item.val.toLocaleString()}</div>
+      ${status ? `<div class="ma-status">${status}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderPriceCards(prices, type, close) {
+  const isEntry = type !== 'exit';
+  const nowCard = { label:'現在股價', val: fmtPrice(close), cls:'current' };
+  const cards = isEntry
+    ? [
+        nowCard,
+        { label:'推薦進場價', val: fmtPrice(prices.entry),   cls:'hl'     },
+        { label:'建議出場',   val: fmtPrice(prices.resist),  cls:''       },
+        { label:'支撐價',     val: fmtPrice(prices.support), cls:''       },
+        { label:'壓力價',     val: fmtPrice(prices.resist),  cls:''       },
+        { label:'停損價',     val: fmtPrice(prices.stop),    cls:'danger' },
+      ]
+    : [
+        nowCard,
+        { label:'推薦出場價', val: fmtPrice(prices.exit),    cls:'danger' },
+        { label:'觀察進場',   val: fmtPrice(prices.support), cls:''       },
+        { label:'支撐價',     val: fmtPrice(prices.support), cls:''       },
+        { label:'壓力價',     val: fmtPrice(prices.resist),  cls:''       },
+        { label:'停損參考',   val: fmtPrice(prices.stop),    cls:''       },
+      ];
+
+  document.getElementById('priceCards').innerHTML = cards.map(c =>
+    `<div class="pc ${c.cls}">
+      <div class="pc-label">${c.label}</div>
+      <div class="pc-val">${c.val}</div>
+    </div>`).join('');
+}
+
+function renderScore(eScore, xScore, type) {
+  const isEntry = type !== 'exit';
+  document.getElementById('scoreTitle').textContent = isEntry ? '進場評分明細' : '出場風險評分';
+
+  let rows = '', total = 0, deduct = 0;
+  if (isEntry && eScore) {
+    total  = eScore.total;
+    deduct = eScore.deduct;
+    rows = [
+      { label:'量能分數',  val: eScore.volScore,  max: 35, bar:'c-green'  },
+      { label:'技術分數',  val: eScore.techScore, max: 40, bar:'c-blue'   },
+      { label:'籌碼分數',  val: eScore.instScore, max: 25, bar:'c-purple' },
+    ].map(r => `
+      <div class="score-item">
+        <div class="score-row">
+          <span class="score-lbl">${r.label}</span>
+          <span class="score-num">${r.val} / ${r.max}</span>
+        </div>
+        <div class="bar-wrap"><div class="bar ${r.bar}" style="width:${Math.round(r.val/r.max*100)}%"></div></div>
+      </div>`).join('');
+  } else if (!isEntry && xScore) {
+    total = xScore.total;
+    rows = [
+      { label:'趨勢轉弱', val: xScore.trendScore, max: 30, bar:'c-orange' },
+      { label:'籌碼轉弱', val: xScore.instScore,  max: 25, bar:'c-red'    },
+      { label:'量價風險', val: xScore.pvScore,    max: 25, bar:'c-orange' },
+      { label:'停損風險', val: xScore.stopScore,  max: 20, bar:'c-red'    },
+    ].map(r => `
+      <div class="score-item">
+        <div class="score-row">
+          <span class="score-lbl">${r.label}</span>
+          <span class="score-num">${r.val} / ${r.max}</span>
+        </div>
+        <div class="bar-wrap"><div class="bar ${r.bar}" style="width:${Math.round(r.val/r.max*100)}%"></div></div>
+      </div>`).join('');
+  } else {
+    rows = '<p style="color:#9CA3AF;font-size:13px">評分資料不足（需至少25筆歷史資料）</p>';
+    total = 0;
+  }
+
+  const totalColor = total >= 80 ? '#15803D' : total >= 65 ? '#92400E' : '#BE123C';
+  document.getElementById('scoreList').innerHTML = rows + `
+    <div class="score-total">
+      <span class="score-total-lbl">總分</span>
+      <div>
+        <div class="score-total-val" style="color:${totalColor}">${total} / 100</div>
+        ${deduct < 0 ? `<div class="deduct-note">風險扣分 ${deduct}</div>` : ''}
+      </div>
+    </div>`;
+}
+
+function renderReasons(reasons, type) {
+  const isEntry = type !== 'exit';
+  document.getElementById('reasonTitle').textContent = isEntry ? '關鍵進場理由' : '關鍵出場理由';
+  const ic = isEntry ? '✅' : '⚠️';
+  document.getElementById('reasonList').innerHTML = reasons.map(r =>
+    `<div class="reason-item ${type}">
+      <span class="reason-ic">${ic}</span>
+      <span class="reason-text">${r}</span>
+    </div>`).join('');
+}
+
+
+/* ═══════════════════════════════════════
+   Main load
+═══════════════════════════════════════ */
+async function loadPage() {
+  const params = new URLSearchParams(location.search);
+  const code   = params.get('code') || '2330';
+  const type   = params.get('type') || 'entry';
+  currentCode  = code;
+  currentType  = type;
+
+  document.getElementById('loadingTitle').textContent = `載入 ${code} 資料…`;
+
+  try {
+    const d = await DataService.loadStockDetail(code, type);
+    currentStockData = d;
+
+    document.title = `${d.name}（${d.code}）— 個股健檢`;
+
+    // Hero
+    document.getElementById('heroAvatar').textContent = d.name.charAt(0);
+    document.getElementById('heroName').textContent   = d.name;
+    document.getElementById('heroCode').textContent   = d.code;
+
+    const badge = document.getElementById('srcBadge');
+    if (d.source === 'finmind') { badge.className='src-badge finmind'; badge.textContent='🟢 FinMind'; }
+    else if (d.source === 'twse') { badge.className='src-badge twse'; badge.textContent='🔵 TWSE'; }
+    else { badge.className='src-badge mock'; badge.textContent='⚠️ 模擬'; }
+
+    const priceEl  = document.getElementById('heroPrice');
+    const changeEl = document.getElementById('heroChange');
+    priceEl.textContent  = d.close ? '$' + d.close.toLocaleString() : '—';
+    priceEl.className    = 'hero-price ' + chgClass(d.changePct);
+    const sign = d.changePct >= 0 ? '+' : '';
+    changeEl.textContent = d.changeAmt
+      ? `${d.changeAmt >= 0 ? '+' : ''}${d.changeAmt.toFixed(1)} (${sign}${d.changePct.toFixed(2)}%)`
+      : '—';
+    changeEl.className   = 'hero-change ' + chgClass(d.changePct);
+
+    const sigEl = document.getElementById('heroSig');
+    sigEl.className = 'sig ' + d.sig;
+    document.getElementById('heroSigTxt').textContent = sigLabel[d.sig] || '—';
+
+    const tb = document.getElementById('typeBadge');
+    tb.textContent = type === 'exit' ? '推薦出場' : '推薦進場';
+    tb.className   = 'type-badge ' + type;
+
+    // MA bar
+    if (d.ma) renderMABar(d.ma, d.close);
+
+    // Price cards (now includes current price)
+    renderPriceCards(d.prices, type, d.close);
+
+    // Summary
+    document.getElementById('summaryText').textContent = d.summary || '—';
+
+    // Score
+    renderScore(d.eScore, d.xScore, type);
+
+    // Reasons
+    renderReasons(d.reasons || [], type);
+
+    // Price chart
+    renderPriceChart(d.priceHistory || [], d.close, type, code, currentChartPeriod);
+
+  } catch(e) {
+    document.getElementById('loadingTitle').textContent = '載入失敗';
+    document.getElementById('loadingSub').textContent   = e.message;
+    console.error(e);
+    return;
+  }
+
+  document.getElementById('loadingOverlay').classList.add('hidden');
+}
+
+loadPage();
+</script>
+</body>
+</html>

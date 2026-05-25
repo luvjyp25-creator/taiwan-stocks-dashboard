@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>資料來源設定 — 台股雷達</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+      background: #F0F2F5; color: #111827; min-height: 100vh;
+    }
+
+    /* Header */
+    header {
+      position: sticky; top: 0; z-index: 100; background: #fff;
+      border-bottom: 1px solid #E5E7EB; height: 60px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 32px; box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .logo-mark {
+      width: 34px; height: 34px; border-radius: 9px;
+      background: linear-gradient(135deg,#1B4FD8,#3B82F6);
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-weight: 800; font-size: 14px;
+    }
+    .logo-name { font-size: 17px; font-weight: 700; color: #111827; }
+    .logo-name span { color: #1B4FD8; }
+    .back-btn {
+      display: flex; align-items: center; gap: 6px; font-size: 13px;
+      color: #6B7280; text-decoration: none; font-weight: 600;
+      padding: 6px 12px; border-radius: 8px; transition: background .15s;
+    }
+    .back-btn:hover { background: #F3F4F6; color: #111827; }
+
+    /* Layout */
+    .wrap { max-width: 720px; margin: 0 auto; padding: 32px 24px 60px; }
+    .page-title { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+    .page-sub   { font-size: 13px; color: #6B7280; margin-bottom: 28px; }
+
+    /* Card */
+    .card {
+      background: #fff; border: 1px solid #E5E7EB; border-radius: 16px;
+      overflow: hidden; margin-bottom: 20px;
+    }
+    .card-head {
+      padding: 16px 24px; border-bottom: 1px solid #F3F4F6;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .card-icon { font-size: 20px; }
+    .card-head h2 { font-size: 15px; font-weight: 700; }
+    .card-head p  { font-size: 12px; color: #9CA3AF; margin-top: 1px; }
+    .card-body { padding: 20px 24px; }
+
+    /* Form elements */
+    .field { margin-bottom: 18px; }
+    .field:last-child { margin-bottom: 0; }
+    label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+    .field-desc { font-size: 12px; color: #9CA3AF; margin-top: 4px; }
+    .field-desc a { color: #1B4FD8; text-decoration: none; }
+    .field-desc a:hover { text-decoration: underline; }
+
+    .input-row { display: flex; gap: 8px; }
+    input[type="text"], input[type="password"] {
+      flex: 1; padding: 9px 12px; border: 1px solid #D1D5DB; border-radius: 8px;
+      font-size: 13.5px; color: #111827; font-family: inherit; background: #fff;
+    }
+    input:focus { outline: none; border-color: #1B4FD8; box-shadow: 0 0 0 3px rgba(27,79,216,.12); }
+    input.error   { border-color: #F43F5E; }
+    input.success { border-color: #22C55E; }
+
+    /* Toggle switch */
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 0; border-bottom: 1px solid #F9FAFB;
+    }
+    .toggle-row:last-child { border-bottom: none; }
+    .toggle-info h4 { font-size: 13.5px; font-weight: 600; }
+    .toggle-info p  { font-size: 12px; color: #9CA3AF; margin-top: 2px; }
+    .switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; inset: 0; border-radius: 24px; background: #D1D5DB;
+      cursor: pointer; transition: background .2s;
+    }
+    .slider::before {
+      content: ''; position: absolute; width: 18px; height: 18px;
+      border-radius: 50%; background: #fff; left: 3px; top: 3px;
+      transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.2);
+    }
+    .switch input:checked + .slider { background: #1B4FD8; }
+    .switch input:checked + .slider::before { transform: translateX(20px); }
+
+    /* Buttons */
+    .btn {
+      padding: 8px 16px; border-radius: 8px; border: none;
+      font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+      transition: all .15s; display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn-primary { background: #1B4FD8; color: #fff; }
+    .btn-primary:hover { background: #1641B5; }
+    .btn-primary:disabled { background: #93C5FD; cursor: not-allowed; }
+    .btn-ghost { background: #F3F4F6; color: #374151; }
+    .btn-ghost:hover { background: #E5E7EB; }
+    .btn-danger { background: #FFF1F2; color: #BE123C; }
+    .btn-danger:hover { background: #FFE4E6; }
+
+    /* Status badges */
+    .status {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .status.ok      { background: #F0FDF4; color: #15803D; } .status.ok      .status-dot { background: #22C55E; }
+    .status.err     { background: #FFF1F2; color: #9F1239; } .status.err     .status-dot { background: #F43F5E; }
+    .status.pending { background: #FFFBEB; color: #92400E; } .status.pending .status-dot { background: #F59E0B; animation: blink 1s ease-in-out infinite; }
+    .status.idle    { background: #F3F4F6; color: #6B7280; } .status.idle    .status-dot { background: #D1D5DB; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* Priority chart */
+    .priority-flow {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 12px 14px; background: #F9FAFB; border-radius: 10px;
+      font-size: 13px;
+    }
+    .pf-step {
+      display: flex; align-items: center; gap: 6px;
+      background: #fff; border: 1px solid #E5E7EB;
+      border-radius: 8px; padding: 6px 12px; font-weight: 600;
+    }
+    .pf-arrow { color: #D1D5DB; font-size: 16px; }
+    .pf-step.active { border-color: #1B4FD8; color: #1B4FD8; }
+    .pf-step.warn   { border-color: #F59E0B; color: #92400E; }
+
+    /* Last updated */
+    .meta-row {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 12px; color: #9CA3AF; padding-top: 14px; border-top: 1px solid #F3F4F6;
+      margin-top: 14px;
+    }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+      background: #111827; color: #fff; font-size: 13px; font-weight: 500;
+      padding: 10px 20px; border-radius: 10px; z-index: 999;
+      transition: transform .3s ease; white-space: nowrap;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    @media (max-width: 480px) {
+      .wrap { padding: 20px 12px 40px; }
+      header { padding: 0 16px; }
+      .card-body { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <a class="logo" href="taiwan-stocks-dashboard.html">
+    <div class="logo-mark">台</div>
+    <div class="logo-name">台股<span>雷達</span></div>
+  </a>
+  <a class="back-btn" href="taiwan-stocks-dashboard.html">← 返回首頁</a>
+</header>
+
+<div class="wrap">
+  <div class="page-title">⚙️ 資料來源設定</div>
+  <div class="page-sub">設定 API 金鑰與資料來源優先順序</div>
+
+  <!-- Priority Flow -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-icon">🔀</span>
+      <div>
+        <h2>資料優先順序</h2>
+        <p>系統依序嘗試，若前一個來源失敗則自動切換</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="priority-flow">
+        <div class="pf-step active" id="pf1">🟢 FinMind（主）</div>
+        <span class="pf-arrow">→</span>
+        <div class="pf-step" id="pf2">🔵 TWSE（備援）</div>
+        <span class="pf-arrow">→</span>
+        <div class="pf-step warn" id="pf3">⚠️ Mock Data</div>
+      </div>
+      <div class="meta-row">
+        <span id="currentSource">目前使用：— </span>
+        <span id="lastUpdated">最後更新：—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- FinMind -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-icon">🟢</span>
+      <div>
+        <h2>FinMind（主要資料源）</h2>
+        <p>歷史股價、法人買賣超、技術指標計算</p>
+      </div>
+    </div>
+    <div class="card-body">
+
+      <div class="field">
+        <label>API Token</label>
+        <div class="input-row">
+          <input type="password" id="fmToken" placeholder="請輸入 FinMind API Token" autocomplete="off" />
+          <button class="btn btn-primary" id="fmTestBtn" onclick="testFinMind()">測試連線</button>
+        </div>
+        <p class="field-desc" id="tokenHint">
+          免費帳號每日 600 次請求。
+          尚無帳號？<a href="https://finmindtrade.com/" target="_blank" rel="noopener">至 FinMind 官網申請</a>
+        </p>
+      </div>
+
+      <div class="field" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div>
+          <div style="font-size:13.5px;font-weight:600">連線狀態</div>
+        </div>
+        <span class="status idle" id="fmStatus">
+          <span class="status-dot"></span>未測試
+        </span>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn btn-primary" onclick="saveToken()">儲存 Token</button>
+        <button class="btn btn-danger"  onclick="clearToken()">清除 Token</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TWSE -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-icon">🔵</span>
+      <div>
+        <h2>TWSE 官方 OpenData（備援）</h2>
+        <p>當日股價、大盤指數、三大法人公開資料</p>
+      </div>
+    </div>
+    <div class="card-body">
+
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <h4>啟用 TWSE OpenAPI</h4>
+          <p>免費、無需 Token，提供延遲約20分鐘的官方資料</p>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="twseToggle" onchange="saveTWSE()" />
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="field" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;margin-bottom:0">
+        <div style="font-size:13.5px;font-weight:600">連線狀態</div>
+        <span class="status idle" id="twseStatus">
+          <span class="status-dot"></span>未測試
+        </span>
+      </div>
+
+      <div style="margin-top:12px">
+        <button class="btn btn-ghost" onclick="testTWSE()">測試 TWSE 連線</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase Cloud Sync -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-icon">☁️</span>
+      <div>
+        <h2>Firebase 雲端同步（選用）</h2>
+        <p>登入後，推薦回顧記錄自動同步到雲端，任何裝置都能查看</p>
+      </div>
+    </div>
+    <div class="card-body">
+
+      <div class="field">
+        <label>Firebase 設定碼（貼上整個 firebaseConfig 物件）</label>
+        <textarea id="fbConfigInput" rows="7" style="
+          width:100%; padding:9px 12px; border:1px solid #D1D5DB; border-radius:8px;
+          font-size:12px; font-family:monospace; color:#111827; resize:vertical;
+          line-height:1.6;" placeholder='{
+  "apiKey": "...",
+  "authDomain": "...",
+  "projectId": "...",
+  "storageBucket": "...",
+  "messagingSenderId": "...",
+  "appId": "..."
+}'></textarea>
+        <p class="field-desc">
+          至 <a href="https://console.firebase.google.com" target="_blank" rel="noopener">Firebase Console</a>
+          → 專案設定 → 你的應用程式 → 複製 firebaseConfig 物件貼上
+        </p>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="btn btn-primary" onclick="saveFbConfig()">儲存設定</button>
+        <button class="btn btn-danger"  onclick="clearFbConfig()">清除設定</button>
+      </div>
+
+      <div style="border-top:1px solid #F3F4F6;padding-top:16px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px">Google 帳號登入</div>
+        <div id="fbAuthStatus" style="margin-bottom:10px;font-size:13px;color:#6B7280">
+          載入中…
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" id="fbLoginBtn"  onclick="fbSettingsSignIn()">🔐 用 Google 登入</button>
+          <button class="btn btn-ghost"   id="fbLogoutBtn" onclick="fbSettingsSignOut()" style="display:none">登出</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Cache & Refresh -->
+  <div class="card">
+    <div class="card-head">
+      <span class="card-icon">🗂️</span>
+      <div>
+        <h2>快取與更新</h2>
+        <p>資料快取 15 分鐘，可手動清除強制重新取得</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <h4>快取狀態</h4>
+          <p id="cacheDesc">—</p>
+        </div>
+        <button class="btn btn-ghost" onclick="doClearCache()">清除快取</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="data-service.js"></script>
+<script>
+/* ── Init ── */
+function init() {
+  // Token
+  const tok = DataService.getToken();
+  if (tok) {
+    document.getElementById('fmToken').value = '•'.repeat(32);
+    document.getElementById('fmToken').className = 'success';
+    showStatus(document.getElementById('fmStatus'), 'ok', 'Token 已儲存（點「測試連線」可驗證）');
+  }
+
+  // TWSE toggle
+  document.getElementById('twseToggle').checked = DataService.useTWSE();
+
+  // Cache info
+  const cacheKeys = Object.keys(sessionStorage).filter(k => k.startsWith('fm_') || k.startsWith('twse_'));
+  document.getElementById('cacheDesc').textContent =
+    cacheKeys.length > 0 ? `目前有 ${cacheKeys.length} 筆快取（15分鐘內有效）` : '無快取';
+
+  // Current source / last updated
+  const src = localStorage.getItem('last_source') || '—';
+  const upd = localStorage.getItem('last_updated') || '—';
+  document.getElementById('currentSource').textContent = '目前使用：' + src;
+  document.getElementById('lastUpdated').textContent   = '最後更新：' + upd;
+}
+
+/* ── FinMind ── */
+async function testFinMind() {
+  const input  = document.getElementById('fmToken');
+  const btn    = document.getElementById('fmTestBtn');
+  const status = document.getElementById('fmStatus');
+
+  const raw = input.value.trim();
+  const tok = raw === '•'.repeat(32) ? DataService.getToken() : raw;
+  if (!tok) { showStatus(status,'err','請先輸入 Token'); return; }
+
+  btn.disabled = true; btn.textContent = '測試中…';
+  showStatus(status,'pending','連線中…');
+
+  const r = await DataService.testFinMind(tok);
+
+  btn.disabled = false; btn.textContent = '測試連線';
+  if (r.ok) {
+    showStatus(status,'ok', r.msg);
+    input.className = 'success';
+    toast('FinMind 連線成功 ✓');
+  } else {
+    showStatus(status,'err', r.msg);
+    input.className = 'error';
+    toast('連線失敗：' + r.msg);
+  }
+}
+
+function saveToken() {
+  const raw = document.getElementById('fmToken').value.trim();
+  if (!raw || raw === '•'.repeat(32)) {
+    toast('Token 已是最新，無需重新輸入');
+    return;
+  }
+  DataService.setToken(raw);
+  document.getElementById('fmToken').value = '•'.repeat(32);
+  document.getElementById('fmToken').className = 'success';
+  showStatus(document.getElementById('fmStatus'), 'ok', 'Token 已儲存（點「測試連線」可驗證）');
+  toast('Token 已儲存 ✓');
+}
+
+function clearToken() {
+  DataService.clearToken();
+  document.getElementById('fmToken').value = '';
+  document.getElementById('fmToken').className = '';
+  document.getElementById('tokenHint').innerHTML =
+    '免費帳號每日 600 次請求。尚無帳號？<a href="https://finmindtrade.com/" target="_blank" rel="noopener">至 FinMind 官網申請</a>';
+  showStatus(document.getElementById('fmStatus'),'idle','未設定');
+  toast('Token 已清除');
+}
+
+/* ── TWSE ── */
+async function testTWSE() {
+  const status = document.getElementById('twseStatus');
+  showStatus(status,'pending','連線中…');
+  const r = await DataService.testTWSE();
+  if (r.ok) { showStatus(status,'ok', r.msg); toast('TWSE 連線成功 ✓'); }
+  else       { showStatus(status,'err', r.msg); toast('TWSE 連線失敗：' + r.msg); }
+}
+
+function saveTWSE() {
+  const v = document.getElementById('twseToggle').checked;
+  DataService.setUseTWSE(v);
+  toast(v ? 'TWSE 已啟用' : 'TWSE 已停用');
+}
+
+/* ── Cache ── */
+function doClearCache() {
+  DataService.clearCache();
+  document.getElementById('cacheDesc').textContent = '無快取';
+  toast('快取已清除，下次載入將重新取得資料');
+}
+
+/* ── Helpers ── */
+function showStatus(el, type, msg) {
+  el.className = `status ${type}`;
+  el.innerHTML = `<span class="status-dot"></span>${msg}`;
+}
+
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+/* ── Firebase settings ── */
+let _settingsAuth = null;
+
+function initSettingsFirebase() {
+  const saved = localStorage.getItem('firebase_config');
+  if (saved) {
+    try {
+      document.getElementById('fbConfigInput').value =
+        JSON.stringify(JSON.parse(saved), null, 2);
+    } catch {}
+  }
+  try {
+    const cfg = JSON.parse(saved || 'null');
+    if (!cfg || !cfg.apiKey) { setFbAuthStatus(null, false); return; }
+    if (!firebase.apps.length) firebase.initializeApp(cfg);
+    _settingsAuth = firebase.auth();
+    _settingsAuth.onAuthStateChanged(user => setFbAuthStatus(user, true));
+  } catch(e) {
+    setFbAuthStatus(null, false);
+  }
+}
+
+function setFbAuthStatus(user, ready) {
+  const statusEl = document.getElementById('fbAuthStatus');
+  const loginBtn  = document.getElementById('fbLoginBtn');
+  const logoutBtn = document.getElementById('fbLogoutBtn');
+  if (!ready) {
+    statusEl.textContent = '尚未設定 Firebase，請先填入設定碼並儲存';
+    loginBtn.style.display = 'none'; logoutBtn.style.display = 'none';
+    return;
+  }
+  if (user) {
+    const name  = user.displayName || user.email || '使用者';
+    const photo = user.photoURL ? `<img src="${user.photoURL}" style="width:20px;height:20px;border-radius:50%;vertical-align:middle;margin-right:6px" referrerpolicy="no-referrer">` : '';
+    statusEl.innerHTML = `✅ 已登入：${photo}<strong>${name}</strong>`;
+    loginBtn.style.display  = 'none';
+    logoutBtn.style.display = '';
+  } else {
+    statusEl.textContent = '尚未登入，登入後記錄將自動同步到雲端';
+    loginBtn.style.display  = '';
+    logoutBtn.style.display = 'none';
+  }
+}
+
+function saveFbConfig() {
+  const raw = document.getElementById('fbConfigInput').value.trim();
+  if (!raw) { toast('請貼上 Firebase 設定碼'); return; }
+  try {
+    const cfg = JSON.parse(raw);
+    if (!cfg.apiKey || !cfg.projectId) throw new Error('缺少必要欄位');
+    localStorage.setItem('firebase_config', JSON.stringify(cfg));
+    toast('Firebase 設定已儲存，請重新整理頁面後登入 ✓');
+  } catch(e) {
+    toast('格式錯誤：' + e.message + '，請確認是完整的 JSON 物件');
+  }
+}
+
+function clearFbConfig() {
+  localStorage.removeItem('firebase_config');
+  document.getElementById('fbConfigInput').value = '';
+  setFbAuthStatus(null, false);
+  toast('Firebase 設定已清除');
+}
+
+async function fbSettingsSignIn() {
+  if (!_settingsAuth) { toast('請先儲存 Firebase 設定碼後重新整理頁面'); return; }
+  try { await _settingsAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }
+  catch(e) { toast('登入失敗：' + e.message); }
+}
+
+async function fbSettingsSignOut() {
+  if (_settingsAuth) await _settingsAuth.signOut();
+  toast('已登出');
+}
+
+initSettingsFirebase();
+init();
+</script>
+</body>
+</html>
